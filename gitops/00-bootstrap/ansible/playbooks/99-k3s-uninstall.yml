@@ -1,0 +1,37 @@
+---
+- name: Uninstall k3s (auto-detect server or agent)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    k3s_server_uninstall: /usr/local/bin/k3s-uninstall.sh
+    k3s_agent_uninstall: /usr/local/bin/k3s-agent-uninstall.sh
+
+  tasks:
+    - name: Check if k3s server uninstall script exists
+      ansible.builtin.stat:
+        path: "{{ k3s_server_uninstall }}"
+      register: k3s_server_stat
+
+    - name: Check if k3s agent uninstall script exists
+      ansible.builtin.stat:
+        path: "{{ k3s_agent_uninstall }}"
+      register: k3s_agent_stat
+
+    - name: Uninstall k3s server
+      ansible.builtin.command: "{{ k3s_server_uninstall }}"
+      when: k3s_server_stat.stat.exists
+
+    - name: Uninstall k3s agent
+      ansible.builtin.command: "{{ k3s_agent_uninstall }}"
+      when:
+        - not k3s_server_stat.stat.exists
+        - k3s_agent_stat.stat.exists
+
+    - name: Report if no k3s installation found
+      ansible.builtin.debug:
+        msg: "No k3s installation detected on this host."
+      when:
+        - not k3s_server_stat.stat.exists
+        - not k3s_agent_stat.stat.exists
