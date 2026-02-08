@@ -1,0 +1,20 @@
+# Run kubectl/helm from this node (must be a k3s SERVER)
+pgo_runner_host: "{{ groups['k3s_servers'][0] }}"
+
+# k3s kubeconfig on the server
+pgo_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# Namespace where the operator runs
+pgo_namespace: "postgres-operator"
+
+# OCI chart reference (Crunchy PGO)
+pgo_oci_chart_ref: "oci://registry.developers.crunchydata.com/crunchydata/pgo"
+
+# Optional pin (recommended once you know what you want)
+pgo_chart_version: ""   # e.g. "5.3.0" (or whatever you pick)
+
+# Optional Helm values dict
+pgo_helm_values: {}
+
+# Wait timeout for operator to come up
+pgo_wait_timeout: "10m"

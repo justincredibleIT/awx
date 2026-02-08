@@ -1,0 +1,121 @@
+---
+- name: Validate runner host
+  ansible.builtin.assert:
+    that:
+      - pgo_runner_host is defined
+      - pgo_runner_host | length > 0
+    fail_msg: "pgo_runner_host is not set (expected groups['k3s_servers'][0])."
+
+- name: Assert kubeconfig exists on runner host
+  ansible.builtin.stat:
+    path: "{{ pgo_kubeconfig_path }}"
+  register: pgo_kcfg
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+
+- name: Fail if kubeconfig missing on runner host
+  ansible.builtin.assert:
+    that:
+      - pgo_kcfg.stat.exists
+    fail_msg: "k3s kubeconfig not found at {{ pgo_kubeconfig_path }} on {{ pgo_runner_host }}."
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+
+- name: Ensure PGO namespace exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} get ns {{ pgo_namespace }} >/dev/null 2>&1 || \
+      kubectl --kubeconfig {{ pgo_kubeconfig_path }} create ns {{ pgo_namespace }}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+
+# --- Key change: OCI chart install (no helm repo add) ---
+
+- name: DNS sanity check for Crunchy OCI registry (must resolve)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    getent hosts registry.developers.crunchydata.com >/dev/null
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+
+- name: Write Helm values file if needed
+  ansible.builtin.copy:
+    dest: /tmp/pgo-values.yml
+    content: "{{ pgo_helm_values | to_nice_yaml }}"
+    mode: "0600"
+  when: pgo_helm_values | length > 0
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+
+- name: Install/upgrade PGO via Helm from OCI (uses runner kubeconfig)
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    args=(
+      upgrade --install pgo "{{ pgo_oci_chart_ref }}"
+      --namespace "{{ pgo_namespace }}"
+      --create-namespace
+    )
+
+    {% if pgo_chart_version | length > 0 %}
+    args+=( --version "{{ pgo_chart_version }}" )
+    {% endif %}
+
+    {% if pgo_helm_values | length > 0 %}
+    args+=( -f /tmp/pgo-values.yml )
+    {% endif %}
+
+    helm "${args[@]}"
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ pgo_kubeconfig_path }}"
+    # keep helm state deterministic when running as root
+    HELM_CONFIG_HOME: /root/.config/helm
+    HELM_CACHE_HOME: /root/.cache/helm
+    HELM_DATA_HOME: /root/.local/share/helm
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+  changed_when: true
+
+- name: Wait for PGO deployment to be available
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} -n {{ pgo_namespace }} get deploy -o name
+    op_deploy="$(kubectl --kubeconfig {{ pgo_kubeconfig_path }} -n {{ pgo_namespace }} get deploy -o name | grep -E 'postgres-operator|pgo' | head -n1 || true)"
+    if [ -z "$op_deploy" ]; then
+      echo "Could not find operator deployment in namespace {{ pgo_namespace }}"
+      exit 1
+    fi
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} -n {{ pgo_namespace }} \
+      wait --for=condition=Available "$op_deploy" --timeout={{ pgo_wait_timeout }}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+
+- name: Verify PGO CRDs exist
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} get crd postgresclusters.postgres-operator.crunchydata.com >/dev/null
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+  changed_when: false
+
+- name: Show PGO status
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} -n {{ pgo_namespace }} get pods -o wide
+    echo
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} -n {{ pgo_namespace }} get deploy -o wide
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+  changed_when: false

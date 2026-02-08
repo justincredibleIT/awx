@@ -27,3 +27,10 @@
   gather_facts: false
   roles:
     - longhorn_install
+
+- name: Install Crunchy Postgres Operator (PGO)
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - postgres_operator_install
