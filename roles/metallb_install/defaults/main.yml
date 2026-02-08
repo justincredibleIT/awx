@@ -1,0 +1,34 @@
+---
+# Admin runner node selection:
+# By default, tasks delegate to groups['k3s_servers'][0].
+# If you prefer to override, set metallb_admin_host to a hostname in inventory.
+metallb_admin_host: ""
+
+# Namespace / kubeconfig location ON THE ADMIN RUNNER NODE
+metallb_namespace: metallb-system
+metallb_kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# Helm repo + chart
+metallb_helm_repo_name: metallb
+metallb_helm_repo_url: https://metallb.github.io/metallb
+metallb_release_name: metallb
+metallb_chart_name: metallb/metallb
+
+# Optional: pin a version. Leave "" to use latest in repo index.
+metallb_chart_version: ""
+
+# Optional Helm values passed via stdin to `helm upgrade --install ... --values -`
+# Example:
+# metallb_helm_values:
+#   speaker:
+#     tolerations:
+#       - key: "node-role.kubernetes.io/control-plane"
+#         operator: "Exists"
+metallb_helm_values: {}
+
+# Wait timeouts
+metallb_wait_timeout: 300s
+
+# Manifests shipped with this role (relative to role_path)
+metallb_ipaddresspool_manifest: files/ipaddresspool.yaml
+metallb_l2advertisement_manifest: files/l2advertisement.yaml

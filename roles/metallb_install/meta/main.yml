@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: metallb_install
+  author: justin
+  description: Install MetalLB (Helm) and apply L2 pool/advertisement manifests
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

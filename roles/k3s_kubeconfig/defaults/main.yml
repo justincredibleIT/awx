@@ -1,0 +1,15 @@
+---
+# Where kubeconfig lives on the k3s server
+k3s_kubeconfig_remote_path: "/etc/rancher/k3s/k3s.yaml"
+
+# Where to write kubeconfig on your workstation
+k3s_kubeconfig_local_path: "{{ playbook_dir }}/../kubeconfig.yaml"
+
+# API endpoint hostname/FQDN that ALL clients can resolve (should match cert SAN)
+k3s_kubeconfig_server_endpoint: "awx01"
+
+# API port
+k3s_kubeconfig_api_port: 6443
+
+# File mode on workstation
+k3s_kubeconfig_local_mode: "0600"

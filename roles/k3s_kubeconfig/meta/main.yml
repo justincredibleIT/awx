@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: k3s_kubeconfig
+  author: justin
+  description: Fetch K3s kubeconfig to the Ansible controller and rewrite server endpoint
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

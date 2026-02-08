@@ -1,0 +1,53 @@
+---
+- name: Assert k3s_servers exists
+  ansible.builtin.assert:
+    that:
+      - groups['k3s_servers'] is defined
+      - (groups['k3s_servers'] | length) >= 1
+    fail_msg: "You must define an inventory group [k3s_servers] with at least 1 host."
+
+- name: Determine first server hostname
+  ansible.builtin.set_fact:
+    k3s_first_server: "{{ groups['k3s_servers'][0] }}"
+  run_once: true
+
+# Fetch runs ON the remote host (delegated to first server) and needs sudo there
+- name: Fetch kubeconfig from first server to workstation
+  ansible.builtin.fetch:
+    src: "{{ k3s_kubeconfig_remote_path }}"
+    dest: "{{ k3s_kubeconfig_local_path }}"
+    flat: true
+  run_once: true
+  delegate_to: "{{ k3s_first_server }}"
+  become: true
+
+# Everything below runs on localhost, so force no-become
+- name: Rewrite kubeconfig server endpoint (127.0.0.1 -> real endpoint)
+  ansible.builtin.replace:
+    path: "{{ k3s_kubeconfig_local_path }}"
+    regexp: '^(\s*server:\s*)https://127\.0\.0\.1:6443\s*$'
+    replace: '\1https://{{ k3s_kubeconfig_server_endpoint }}:{{ k3s_kubeconfig_api_port }}'
+  run_once: true
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_connection: local
+
+- name: Set permissions on kubeconfig (workstation)
+  ansible.builtin.file:
+    path: "{{ k3s_kubeconfig_local_path }}"
+    mode: "{{ k3s_kubeconfig_local_mode }}"
+  run_once: true
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_connection: local
+
+- name: Show kubeconfig path (workstation)
+  ansible.builtin.debug:
+    msg: "Kubeconfig written to {{ k3s_kubeconfig_local_path }} (server=https://{{ k3s_kubeconfig_server_endpoint }}:{{ k3s_kubeconfig_api_port }})"
+  run_once: true
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_connection: local

@@ -1,0 +1,41 @@
+---
+- name: Helm | Detect system arch
+  ansible.builtin.set_fact:
+    helm_arch: >-
+      {{
+        'amd64' if ansible_facts.architecture in ['x86_64', 'amd64'] else
+        'arm64' if ansible_facts.architecture in ['aarch64', 'arm64'] else
+        ansible_facts.architecture
+      }}
+
+- name: Helm | Set version
+  ansible.builtin.set_fact:
+    helm_version: "{{ os_prep_helm_version | default('v3.15.4') }}"
+
+- name: Helm | Download Helm tarball
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+    dest: "/tmp/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+    mode: "0644"
+
+- name: Helm | Extract tarball
+  ansible.builtin.unarchive:
+    src: "/tmp/helm-{{ helm_version }}-linux-{{ helm_arch }}.tar.gz"
+    dest: "/tmp"
+    remote_src: true
+
+- name: Helm | Install binary
+  ansible.builtin.copy:
+    src: "/tmp/linux-{{ helm_arch }}/helm"
+    dest: "/usr/local/bin/helm"
+    mode: "0755"
+    remote_src: true
+
+- name: Helm | Verify
+  ansible.builtin.command: /usr/local/bin/helm version --short
+  register: helm_version_out
+  changed_when: false
+
+- name: Helm | Show version
+  ansible.builtin.debug:
+    var: helm_version_out.stdout

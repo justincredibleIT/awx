@@ -1,0 +1,119 @@
+---
+# MetalLB install + config
+# All cluster operations run on the "admin runner" node, NOT localhost.
+
+- name: Determine admin runner node
+  ansible.builtin.set_fact:
+    metallb_admin_runner: >-
+      {{
+        (metallb_admin_host | length > 0)
+        | ternary(metallb_admin_host, groups['k3s_servers'][0])
+      }}
+  run_once: true
+
+- name: Assert kubeconfig exists on admin runner
+  ansible.builtin.stat:
+    path: "{{ metallb_kubeconfig }}"
+  register: metallb_kcfg
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Fail if kubeconfig missing
+  ansible.builtin.assert:
+    that:
+      - metallb_kcfg.stat.exists
+    fail_msg: "Kubeconfig not found at {{ metallb_kubeconfig }} on {{ metallb_admin_runner }}. Run k3s install first."
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Ensure metallb namespace exists (check)
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    get ns {{ metallb_namespace }}
+  register: metallb_ns_check
+  failed_when: false
+  changed_when: false
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Create metallb namespace (if missing)
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    create ns {{ metallb_namespace }}
+  when: metallb_ns_check.rc != 0
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Add MetalLB Helm repo
+  ansible.builtin.command: >
+    helm repo add {{ metallb_helm_repo_name }} {{ metallb_helm_repo_url }}
+  register: metallb_helm_repo_add
+  changed_when: "'already exists' not in (metallb_helm_repo_add.stdout | default('') + metallb_helm_repo_add.stderr | default(''))"
+  failed_when: metallb_helm_repo_add.rc != 0 and ("already exists" not in (metallb_helm_repo_add.stderr | default('')))
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Helm repo update
+  ansible.builtin.command: helm repo update
+  changed_when: false
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Install/upgrade MetalLB (Helm)
+  ansible.builtin.command: >
+    helm upgrade --install {{ metallb_release_name }} {{ metallb_chart_name }}
+    --namespace {{ metallb_namespace }}
+    --kubeconfig {{ metallb_kubeconfig }}
+    {% if metallb_chart_version | length > 0 %} --version {{ metallb_chart_version }} {% endif %}
+    {% if metallb_helm_values | length > 0 %} --values - {% endif %}
+  args:
+    stdin: "{{ metallb_helm_values | to_nice_yaml if (metallb_helm_values | length > 0) else omit }}"
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Wait for MetalLB controller deployment to be available
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    -n {{ metallb_namespace }}
+    wait --for=condition=Available deploy/{{ metallb_release_name }}-controller --timeout={{ metallb_wait_timeout }}
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Wait for MetalLB speaker daemonset to be ready
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    -n {{ metallb_namespace }}
+    rollout status ds/{{ metallb_release_name }}-speaker --timeout={{ metallb_wait_timeout }}
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+# --- FIX: apply manifests without requiring role_path to exist on the admin runner ---
+
+- name: Apply IPAddressPool (stdin)
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    -n {{ metallb_namespace }}
+    apply -f -
+  args:
+    stdin: "{{ lookup('file', role_path ~ '/' ~ metallb_ipaddresspool_manifest) }}"
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Apply L2Advertisement (stdin)
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    -n {{ metallb_namespace }}
+    apply -f -
+  args:
+    stdin: "{{ lookup('file', role_path ~ '/' ~ metallb_l2advertisement_manifest) }}"
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true
+
+- name: Show MetalLB resources
+  ansible.builtin.command: >
+    kubectl --kubeconfig {{ metallb_kubeconfig }}
+    -n {{ metallb_namespace }}
+    get ipaddresspools,l2advertisements -o wide
+  changed_when: false
+  delegate_to: "{{ metallb_admin_runner }}"
+  run_once: true

@@ -33,3 +33,6 @@ os_prep_required_packages_redhat:
 # iSCSI service names
 os_prep_iscsi_service_debian: open-iscsi
 os_prep_iscsi_service_redhat: iscsid
+
+os_prep_install_helm: true
+os_prep_helm_version: "v3.15.4"
