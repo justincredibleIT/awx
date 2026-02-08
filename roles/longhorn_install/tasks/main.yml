@@ -1,0 +1,221 @@
+---
+- name: Validate runner host
+  ansible.builtin.assert:
+    that:
+      - longhorn_runner_host is defined
+      - longhorn_runner_host | length > 0
+    fail_msg: "longhorn_runner_host is not set (expected groups['k3s_servers'][0])."
+
+- name: Assert kubeconfig exists on runner host
+  ansible.builtin.stat:
+    path: "{{ longhorn_kubeconfig_path }}"
+  register: longhorn_kcfg
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+
+- name: Fail if kubeconfig missing on runner host
+  ansible.builtin.assert:
+    that:
+      - longhorn_kcfg.stat.exists
+    fail_msg: "k3s kubeconfig not found at {{ longhorn_kubeconfig_path }} on {{ longhorn_runner_host }}. k3s server install may not have completed."
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+
+- name: Ensure Longhorn namespace exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} get ns {{ longhorn_namespace }} >/dev/null 2>&1 || \
+      kubectl --kubeconfig {{ longhorn_kubeconfig_path }} create ns {{ longhorn_namespace }}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+
+- name: Add Longhorn Helm repo + update
+  ansible.builtin.shell: |
+    set -euo pipefail
+    helm repo add {{ longhorn_helm_repo_name }} {{ longhorn_helm_repo_url }} 2>/dev/null || true
+    helm repo update
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+
+- name: Write Helm values file if needed
+  ansible.builtin.copy:
+    dest: /tmp/longhorn-values.yml
+    content: "{{ longhorn_helm_values | to_nice_yaml }}"
+    mode: "0600"
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+  when: longhorn_helm_values | length > 0
+
+- name: Install/upgrade Longhorn via Helm (uses runner kubeconfig)
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    args=(
+      upgrade --install {{ longhorn_release_name }} {{ longhorn_chart_name }}
+      --namespace {{ longhorn_namespace }}
+      --create-namespace
+    )
+
+    {% if longhorn_chart_version | length > 0 %}
+    args+=( --version {{ longhorn_chart_version }} )
+    {% endif %}
+
+    {% if longhorn_helm_values | length > 0 %}
+    args+=( -f /tmp/longhorn-values.yml )
+    {% endif %}
+
+    helm "${args[@]}"
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ longhorn_kubeconfig_path }}"
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+  changed_when: true
+
+- name: Wait for Longhorn core components (compatible across versions)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ longhorn_namespace }}"
+
+    wait_deploy () {
+      local name="$1"
+      if kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n "$ns" get deploy "$name" >/dev/null 2>&1; then
+        kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n "$ns" \
+          wait --for=condition=Available "deploy/$name" --timeout={{ longhorn_wait_timeout }}
+      else
+        echo "Skip: deploy/$name not found"
+      fi
+    }
+
+    rollout_ds () {
+      local name="$1"
+      if kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n "$ns" get ds "$name" >/dev/null 2>&1; then
+        kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n "$ns" \
+          rollout status "ds/$name" --timeout={{ longhorn_wait_timeout }}
+      else
+        echo "Skip: ds/$name not found"
+      fi
+    }
+
+    wait_deploy longhorn-ui
+    wait_deploy longhorn-driver-deployer
+    rollout_ds longhorn-manager
+
+    # common CSI pieces (vary by version/chart)
+    rollout_ds longhorn-csi-plugin
+    wait_deploy csi-attacher
+    wait_deploy csi-provisioner
+    wait_deploy csi-resizer
+    wait_deploy csi-snapshotter
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+
+- name: Manage StorageClasses (default + HA)
+  when: longhorn_manage_storageclasses | bool
+  block:
+
+    - name: Build StorageClass manifests (as dictionaries)
+      ansible.builtin.set_fact:
+        longhorn_sc_default_obj: >-
+          {{
+            {
+              'apiVersion': 'storage.k8s.io/v1',
+              'kind': 'StorageClass',
+              'metadata': {
+                'name': longhorn_default_storageclass_name,
+                'annotations': (
+                  {'storageclass.kubernetes.io/is-default-class': 'true'}
+                  if (longhorn_set_default_storageclass | bool)
+                  else {}
+                )
+              },
+              'provisioner': 'driver.longhorn.io',
+              'reclaimPolicy': 'Delete',
+              'volumeBindingMode': 'Immediate',
+              'allowVolumeExpansion': True,
+              'parameters': {
+                'numberOfReplicas': '2',
+                'staleReplicaTimeout': '30',
+                'fsType': 'ext4'
+              }
+            }
+          }}
+        longhorn_sc_ha_obj: >-
+          {{
+            {
+              'apiVersion': 'storage.k8s.io/v1',
+              'kind': 'StorageClass',
+              'metadata': {'name': longhorn_ha_storageclass_name},
+              'provisioner': 'driver.longhorn.io',
+              'reclaimPolicy': 'Delete',
+              'volumeBindingMode': 'Immediate',
+              'allowVolumeExpansion': True,
+              'parameters': {
+                'numberOfReplicas': (longhorn_ha_replica_count | string),
+                'staleReplicaTimeout': '30',
+                'fsType': 'ext4'
+              }
+            }
+          }}
+      run_once: true
+
+    - name: Render default StorageClass manifest
+      ansible.builtin.copy:
+        dest: /tmp/longhorn-sc-default.yaml
+        mode: "0644"
+        content: "{{ longhorn_sc_default_obj | to_nice_yaml }}"
+      run_once: true
+      delegate_to: "{{ longhorn_runner_host }}"
+
+    - name: Apply default StorageClass
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ longhorn_kubeconfig_path }}"
+          - apply
+          - -f
+          - /tmp/longhorn-sc-default.yaml
+      run_once: true
+      delegate_to: "{{ longhorn_runner_host }}"
+
+    - name: Render HA StorageClass manifest
+      ansible.builtin.copy:
+        dest: /tmp/longhorn-sc-ha.yaml
+        mode: "0644"
+        content: "{{ longhorn_sc_ha_obj | to_nice_yaml }}"
+      run_once: true
+      delegate_to: "{{ longhorn_runner_host }}"
+      when: longhorn_create_ha_storageclass | bool
+
+    - name: Apply HA StorageClass
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ longhorn_kubeconfig_path }}"
+          - apply
+          - -f
+          - /tmp/longhorn-sc-ha.yaml
+      run_once: true
+      delegate_to: "{{ longhorn_runner_host }}"
+      when: longhorn_create_ha_storageclass | bool
+
+- name: Show Longhorn status
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n {{ longhorn_namespace }} get pods -o wide
+    echo
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} get storageclass
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+  changed_when: false

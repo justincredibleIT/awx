@@ -20,3 +20,10 @@
   gather_facts: false
   roles:
     - metallb_install
+
+- name: Install Longhorn (run kubectl/helm from first server)
+  hosts: k3s_all
+  become: true
+  gather_facts: false
+  roles:
+    - longhorn_install
