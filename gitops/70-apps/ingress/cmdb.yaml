@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ansible-cmdb
+  namespace: awx
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: awx-cmdb.homelab.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ansible-cmdb
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ansible-cmdb-dev
+  namespace: awx
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: awx-cmdb-dev.homelab.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ansible-cmdb-dev
+                port:
+                  number: 80

@@ -1,0 +1,60 @@
+---
+- name: OS prep for k3s nodes
+  hosts: k3s_all
+  become: true
+  gather_facts: true
+
+  vars:
+    disable_firewalld: true
+    disable_ufw: true
+    disable_selinux: true
+    required_packages:
+      - curl
+      - ca-certificates
+      - iptables
+      - socat
+      - conntrack
+      - ebtables
+      - ethtool
+      - nfs-common
+      - open-iscsi
+
+  tasks:
+    - name: Install required packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ required_packages }}"
+        state: present
+        update_cache: true
+      when: ansible_facts.os_family == "Debian"
+
+    - name: Install required packages (RHEL/Rocky/etc)
+      ansible.builtin.dnf:
+        name: "{{ required_packages }}"
+        state: present
+      when: ansible_facts.os_family == "RedHat"
+
+    - name: Disable SELinux (RHEL family)
+      ansible.posix.selinux:
+        state: disabled
+      when: disable_selinux and ansible_facts.os_family == "RedHat"
+
+    - name: Stop/disable firewalld (RHEL family)
+      ansible.builtin.service:
+        name: firewalld
+        state: stopped
+        enabled: false
+      when: disable_firewalld and ansible_facts.os_family == "RedHat"
+
+    - name: Stop/disable ufw (Debian family)
+      ansible.builtin.service:
+        name: ufw
+        state: stopped
+        enabled: false
+      when: disable_ufw and ansible_facts.os_family == "Debian"
+
+    - name: Ensure iscsi is enabled for Longhorn (service name varies)
+      ansible.builtin.service:
+        name: "{{ 'iscsid' if ansible_facts.os_family == 'RedHat' else 'open-iscsi' }}"
+        state: started
+        enabled: true
+      ignore_errors: true

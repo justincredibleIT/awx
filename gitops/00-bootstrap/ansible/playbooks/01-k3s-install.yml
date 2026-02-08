@@ -1,0 +1,83 @@
+---
+- name: Install k3s (servers then agents)
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    k3s_version: "v1.29.1+k3s1"     # change if needed
+    k3s_disable_traefik: false       # set true if you want to manage traefik in gitops/10-kube-system
+    k3s_token_file: "/etc/rancher/k3s/k3s_token"
+    kubeconfig_local_path: "{{ lookup('env','HOME') }}/.kube/config"
+
+  tasks:
+    - name: Install first server (cluster init)
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_VERSION='{{ k3s_version }}' \
+          sh -s - server \
+            --cluster-init \
+            {% if k3s_disable_traefik %} --disable traefik {% endif %}
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
+      when: inventory_hostname == groups['k3s_servers'][0]
+
+    - name: Read token from first server
+      ansible.builtin.slurp:
+        src: "{{ k3s_token_file }}"
+      register: k3s_token_raw
+      when: inventory_hostname == groups['k3s_servers'][0]
+
+    - name: Set token fact (run once)
+      ansible.builtin.set_fact:
+        k3s_token: "{{ (k3s_token_raw.content | b64decode).strip() }}"
+      run_once: true
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+
+    - name: Install additional servers (join)
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_VERSION='{{ k3s_version }}' \
+          K3S_URL='https://{{ groups["k3s_servers"][0] }}:6443' \
+          K3S_TOKEN='{{ hostvars[groups["k3s_servers"][0]].k3s_token }}' \
+          sh -s - server \
+            {% if k3s_disable_traefik %} --disable traefik {% endif %}
+      args:
+        creates: /etc/rancher/k3s/k3s.yaml
+      when: inventory_hostname != groups['k3s_servers'][0]
+
+    - name: Fetch kubeconfig from first server
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /tmp/k3s.yaml
+        flat: true
+      run_once: true
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+
+    - name: Install kubeconfig locally
+      ansible.builtin.shell: |
+        mkdir -p "$(dirname '{{ kubeconfig_local_path }}')"
+        cp /tmp/k3s.yaml '{{ kubeconfig_local_path }}'
+        sed -i 's/127.0.0.1/{{ groups["k3s_servers"][0] }}/g' '{{ kubeconfig_local_path }}'
+        chmod 600 '{{ kubeconfig_local_path }}'
+      run_once: true
+      delegate_to: localhost
+
+- name: Install k3s agents (join)
+  hosts: k3s_agents
+  become: true
+  gather_facts: true
+
+  vars:
+    k3s_version: "v1.29.1+k3s1"
+
+  tasks:
+    - name: Install k3s agent
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_VERSION='{{ k3s_version }}' \
+          K3S_URL='https://{{ groups["k3s_servers"][0] }}:6443' \
+          K3S_TOKEN='{{ hostvars[groups["k3s_servers"][0]].k3s_token }}' \
+          sh -s - agent
+      args:
+        creates: /etc/rancher/k3s/k3s-agent.yaml

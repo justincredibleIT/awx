@@ -1,0 +1,5 @@
+resources:
+  - postgresclusters/awxdb-ha.yaml
+  - awx/awx.yaml
+  - ingress/awx-root.yaml
+  - ingress/cmdb.yaml

@@ -1,0 +1,5 @@
+resources:
+  - namespace.yaml
+  - manifests/metallb-install.yaml
+  - ipaddresspool.yaml
+  - l2advertisement.yaml

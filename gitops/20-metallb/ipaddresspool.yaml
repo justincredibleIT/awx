@@ -1,0 +1,9 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: svc-pool-static
+  namespace: metallb-system
+spec:
+  addresses:
+    - 172.20.3.23-172.20.3.27
+  autoAssign: true
