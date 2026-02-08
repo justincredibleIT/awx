@@ -1,0 +1,114 @@
+---
+# This role must be applied to BOTH groups: k3s_servers and k3s_agents
+
+- name: Determine first server hostname
+  ansible.builtin.set_fact:
+    k3s_first_server: "{{ groups['k3s_servers'][0] }}"
+  run_once: true
+
+# ----------------------------
+# Servers: first server init
+# ----------------------------
+- name: Install first k3s server (cluster-init)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION='{{ k3s_version }}' \
+      sh -s - server \
+        --cluster-init \
+        {% if k3s_disable_traefik %} --disable traefik {% endif %} \
+        {% for a in k3s_server_extra_args %} {{ a }} {% endfor %}
+  args:
+    creates: "{{ kubeconfig_remote_path }}"
+    executable: /bin/bash
+  when:
+    - inventory_hostname == k3s_first_server
+    - "'k3s_servers' in group_names"
+
+- name: Wait for kubeconfig on first server
+  ansible.builtin.wait_for:
+    path: "{{ kubeconfig_remote_path }}"
+    timeout: 300
+  when:
+    - inventory_hostname == k3s_first_server
+    - "'k3s_servers' in group_names"
+
+- name: Wait for token on first server
+  ansible.builtin.wait_for:
+    path: "{{ k3s_token_file }}"
+    timeout: 300
+  when:
+    - inventory_hostname == k3s_first_server
+    - "'k3s_servers' in group_names"
+
+- name: Wait for k3s API port on first server
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ k3s_api_port }}"
+    timeout: 300
+  when:
+    - inventory_hostname == k3s_first_server
+    - "'k3s_servers' in group_names"
+
+- name: Read token from first server
+  ansible.builtin.slurp:
+    src: "{{ k3s_token_file }}"
+  register: k3s_token_raw
+  when:
+    - inventory_hostname == k3s_first_server
+    - "'k3s_servers' in group_names"
+
+- name: Publish token as a fact on the first server (delegate_facts)
+  ansible.builtin.set_fact:
+    k3s_cluster_token: "{{ (k3s_token_raw.content | b64decode).strip() }}"
+  delegate_to: "{{ k3s_first_server }}"
+  delegate_facts: true
+  run_once: true
+  when: "'k3s_servers' in groups"
+
+# ----------------------------
+# Servers: join other servers
+# ----------------------------
+- name: Install additional k3s servers (join)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION='{{ k3s_version }}' \
+      K3S_URL='https://{{ k3s_server_endpoint }}:{{ k3s_api_port }}' \
+      K3S_TOKEN='{{ hostvars[k3s_first_server].k3s_cluster_token }}' \
+      sh -s - server \
+        {% if k3s_disable_traefik %} --disable traefik {% endif %} \
+        {% for a in k3s_server_extra_args %} {{ a }} {% endfor %}
+  args:
+    creates: "{{ kubeconfig_remote_path }}"
+    executable: /bin/bash
+  when:
+    - "'k3s_servers' in group_names"
+    - inventory_hostname != k3s_first_server
+
+# ----------------------------
+# Agents: join
+# ----------------------------
+- name: Fail fast if cluster token is missing
+  ansible.builtin.assert:
+    that:
+      - hostvars[k3s_first_server].k3s_cluster_token is defined
+      - (hostvars[k3s_first_server].k3s_cluster_token | length) > 10
+    fail_msg: "k3s_cluster_token is missing. Ensure the first server installed successfully."
+  run_once: true
+  when: "'k3s_agents' in groups"
+
+- name: Install k3s agent (join)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION='{{ k3s_version }}' \
+      K3S_URL='https://{{ k3s_server_endpoint }}:{{ k3s_api_port }}' \
+      K3S_TOKEN='{{ hostvars[k3s_first_server].k3s_cluster_token }}' \
+      sh -s - agent \
+        {% for a in k3s_agent_extra_args %} {{ a }} {% endfor %}
+  args:
+    creates: /etc/systemd/system/k3s-agent.service
+    executable: /bin/bash
+  when:
+    - "'k3s_agents' in group_names"

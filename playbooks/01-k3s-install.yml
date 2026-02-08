@@ -10,7 +10,10 @@
     k3s_token_file: "/var/lib/rancher/k3s/server/node-token"
     kubeconfig_remote_path: "/etc/rancher/k3s/k3s.yaml"
     k3s_api_port: 6443
-    k3s_server_endpoint: "awx01"   # must match cert SAN
+
+    # OPTION 1: MUST match a SAN on the server cert (your cert has "awx01")
+    # Make sure all nodes can resolve "awx01" (DNS or /etc/hosts).
+    k3s_server_endpoint: "awx01"
 
   tasks:
     - name: Determine first server hostname
@@ -68,7 +71,7 @@
         set -euo pipefail
         curl -sfL https://get.k3s.io | \
           INSTALL_K3S_VERSION='{{ k3s_version }}' \
-          K3S_URL='https://{{ hostvars[k3s_first_server].ansible_host | default(k3s_first_server) }}:{{ k3s_api_port }}' \
+          K3S_URL='https://{{ k3s_server_endpoint }}:{{ k3s_api_port }}' \
           K3S_TOKEN='{{ hostvars[k3s_first_server].k3s_cluster_token }}' \
           sh -s - server \
             {% if k3s_disable_traefik %} --disable traefik {% endif %}
@@ -86,6 +89,9 @@
   vars:
     k3s_version: "v1.29.1+k3s1"
     k3s_api_port: 6443
+
+    # Must match servers play
+    k3s_server_endpoint: "awx01"
 
   tasks:
     - name: Determine first server hostname
@@ -106,7 +112,7 @@
         set -euo pipefail
         curl -sfL https://get.k3s.io | \
           INSTALL_K3S_VERSION='{{ k3s_version }}' \
-          K3S_URL='https://{{ hostvars[k3s_first_server].ansible_host | default(k3s_first_server) }}:{{ k3s_api_port }}' \
+          K3S_URL='https://{{ k3s_server_endpoint }}:{{ k3s_api_port }}' \
           K3S_TOKEN='{{ hostvars[k3s_first_server].k3s_cluster_token }}' \
           sh -s - agent
       args:

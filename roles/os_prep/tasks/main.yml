@@ -1,0 +1,65 @@
+---
+- name: OS Prep | Update apt cache (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when: ansible_facts.os_family == "Debian"
+
+- name: OS Prep | Upgrade all packages (Debian/Ubuntu)
+  ansible.builtin.apt:
+    upgrade: dist
+  when:
+    - os_prep_do_upgrade | bool
+    - ansible_facts.os_family == "Debian"
+
+- name: OS Prep | Upgrade all packages (RHEL/Rocky/etc)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  when:
+    - os_prep_do_upgrade | bool
+    - ansible_facts.os_family == "RedHat"
+
+- name: OS Prep | Install required packages (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ os_prep_required_packages_debian }}"
+    state: present
+  when: ansible_facts.os_family == "Debian"
+
+- name: OS Prep | Install required packages (RHEL/Rocky/etc)
+  ansible.builtin.dnf:
+    name: "{{ os_prep_required_packages_redhat }}"
+    state: present
+  when: ansible_facts.os_family == "RedHat"
+
+- name: OS Prep | Disable SELinux (RHEL family)
+  ansible.posix.selinux:
+    state: disabled
+  when:
+    - os_prep_disable_selinux | bool
+    - ansible_facts.os_family == "RedHat"
+
+- name: OS Prep | Stop/disable firewalld (RHEL family)
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  when:
+    - os_prep_disable_firewalld | bool
+    - ansible_facts.os_family == "RedHat"
+
+- name: OS Prep | Stop/disable ufw (Debian family)
+  ansible.builtin.service:
+    name: ufw
+    state: stopped
+    enabled: false
+  when:
+    - os_prep_disable_ufw | bool
+    - ansible_facts.os_family == "Debian"
+
+- name: OS Prep | Ensure iSCSI is enabled for Longhorn (service name varies)
+  ansible.builtin.service:
+    name: "{{ os_prep_iscsi_service_redhat if ansible_facts.os_family == 'RedHat' else os_prep_iscsi_service_debian }}"
+    state: started
+    enabled: true
+  ignore_errors: true

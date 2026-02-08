@@ -1,0 +1,9 @@
+---
+- name: OS prep for k3s nodes
+  hosts: k3s_all
+  become: true
+  gather_facts: true
+
+  roles:
+    - os_prep
+    - k3s_install

@@ -1,0 +1,35 @@
+---
+# Toggle hardening/disable items
+os_prep_disable_firewalld: true
+os_prep_disable_ufw: true
+os_prep_disable_selinux: true
+
+# Whether to upgrade packages during prep
+os_prep_do_upgrade: true
+
+# Package lists per family (override as needed)
+os_prep_required_packages_debian:
+  - curl
+  - ca-certificates
+  - iptables
+  - socat
+  - conntrack
+  - ebtables
+  - ethtool
+  - nfs-common
+  - open-iscsi
+
+os_prep_required_packages_redhat:
+  - curl
+  - ca-certificates
+  - iptables
+  - socat
+  - conntrack-tools
+  - ebtables
+  - ethtool
+  - nfs-utils
+  - iscsi-initiator-utils
+
+# iSCSI service names
+os_prep_iscsi_service_debian: open-iscsi
+os_prep_iscsi_service_redhat: iscsid
