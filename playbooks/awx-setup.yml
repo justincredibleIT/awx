@@ -34,3 +34,4 @@
   gather_facts: false
   roles:
     - postgres_operator_install
+    - awxdb_ha_postgrescluster_apply

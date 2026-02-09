@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ pg_namespace }}
+
+---
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: {{ pg_cluster_name }}
+  namespace: {{ pg_namespace }}
+spec:
+  postgresVersion: 16
+
+  instances:
+    - name: instance1
+      replicas: {{ pg_instances | int }}
+      dataVolumeClaimSpec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ pg_storage_class }}
+        resources:
+          requests:
+            storage: {{ pg_pgdata_size }}
+{% if pg_resources and (pg_resources | length > 0) %}
+      resources:
+{{ pg_resources | to_nice_yaml | indent(8) }}
+{% endif %}
+
+  users:
+    - name: {{ pg_user_name }}
+      databases:
+        - {{ pg_user_name }}
+      password:
+        type: AlphaNumeric
+
+  patroni:
+    dynamicConfiguration:
+      postgresql:
+        parameters:
+          shared_buffers: "256MB"
+
+{% if (pg_enable_backups | default(true)) | bool %}
+  backups:
+    pgbackrest:
+      repos:
+        - name: repo1
+          volume:
+            volumeClaimSpec:
+              accessModes: ["ReadWriteOnce"]
+              storageClassName: {{ pg_backrest_storage_class | default(pg_storage_class | default('longhorn-ha-any')) }}
+              resources:
+                requests:
+                  storage: {{ pg_backrest_repo_size | default('20Gi') }}
+      global:
+        repo1-retention-full: "{{ pg_backrest_retention_full | default(2) }}"
+        repo1-retention-diff: "{{ pg_backrest_retention_diff | default(3) }}"
+{% endif %}

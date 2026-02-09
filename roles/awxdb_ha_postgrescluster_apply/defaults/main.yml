@@ -1,0 +1,43 @@
+# Runner (must be a k3s server with kubeconfig)
+pg_runner_host: "{{ groups['k3s_servers'][0] }}"
+pg_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# Namespace where AWX + DB will live
+pg_namespace: "awx"
+
+# PostgresCluster identity
+pg_cluster_name: "awxdb-ha"
+
+# HA sizing
+pg_instances: 1
+
+# Storage (Longhorn)
+# PGDATA uses your HA class (3 replicas) for resilience
+pg_storage_class: "longhorn-ha-any"
+
+# For 40GB nodes: keep PGDATA modest (3 replicas -> ~15Gi raw)
+pg_pgdata_size: "5Gi"
+
+# Backups (pgBackRest)
+pg_enable_backups: true
+
+# Keep repo on 1-replica class to avoid disk blow-up on 40G nodes
+# (If you set this to longhorn-ha-any, repo_size is multiplied by 3)
+pg_backrest_storage_class: "longhorn"   # change to "longhorn-ha-any" ONLY if you have disk headroom
+
+# For 40GB nodes: keep repo modest
+pg_backrest_repo_size: "10Gi"
+
+# Retention: small to avoid filling nodes
+pg_backrest_retention_full: 1
+pg_backrest_retention_diff: 2
+
+# Optional: instance resources (empty = omit)
+pg_resources: {}
+
+# App user
+pg_user_name: "awx"
+
+# Wait behavior
+pg_wait_ready: true
+pg_wait_timeout: "20m"

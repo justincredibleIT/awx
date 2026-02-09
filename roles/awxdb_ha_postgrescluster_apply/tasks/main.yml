@@ -1,0 +1,113 @@
+---
+- name: Validate runner host
+  ansible.builtin.assert:
+    that:
+      - pg_runner_host is defined
+      - pg_runner_host | length > 0
+    fail_msg: "pg_runner_host is not set (expected groups['k3s_servers'][0])."
+
+- name: Assert kubeconfig exists on runner host
+  ansible.builtin.stat:
+    path: "{{ pg_kubeconfig_path }}"
+  register: pg_kcfg
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+
+- name: Fail if kubeconfig missing on runner host
+  ansible.builtin.assert:
+    that:
+      - pg_kcfg.stat.exists
+    fail_msg: "k3s kubeconfig not found at {{ pg_kubeconfig_path }} on {{ pg_runner_host }}."
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+
+- name: Verify PostgresCluster CRD exists (PGO installed)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ pg_kubeconfig_path }}"
+      - get
+      - crd
+      - postgresclusters.postgres-operator.crunchydata.com
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+  changed_when: false
+
+- name: Render PostgresCluster manifest to runner
+  ansible.builtin.template:
+    src: awxdb-ha.yaml.j2
+    dest: /tmp/awxdb-ha.yaml
+    mode: "0644"
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+
+- name: Apply PostgresCluster manifest
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ pg_kubeconfig_path }}"
+      - apply
+      - -f
+      - /tmp/awxdb-ha.yaml
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+
+- name: Wait for PostgresCluster to become Ready (instance replicas + repo host)
+  when: pg_wait_ready | bool
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    echo "== PostgresCluster status.conditions =="
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
+      get postgrescluster {{ pg_cluster_name }} \
+      -o jsonpath='{range .status.conditions[*]}{.type}{"\t"}{.status}{"\t"}{.reason}{"\t"}{.message}{"\n"}{end}' || true
+    echo
+
+    echo "== Waiting for instance readyReplicas == replicas =="
+    # Wait until the operator has populated status.instances[0]
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
+      wait --for=jsonpath='{.status.instances[0].name}'=instance1 \
+      postgrescluster/{{ pg_cluster_name }} --timeout={{ pg_wait_timeout }} || true
+
+    # Fetch desired replicas from status (falls back to pg_instances)
+    desired_replicas="$(kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
+      get postgrescluster {{ pg_cluster_name }} \
+      -o jsonpath='{.status.instances[0].replicas}' 2>/dev/null || true)"
+    if [[ -z "${desired_replicas}" ]]; then
+      desired_replicas="{{ pg_instances | default(1) }}"
+    fi
+
+    # Wait for readyReplicas to match desired replicas
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
+      wait --for=jsonpath='{.status.instances[0].readyReplicas}'="${desired_replicas}" \
+      postgrescluster/{{ pg_cluster_name }} --timeout={{ pg_wait_timeout }}
+
+    echo "== Instance ready =="
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
+      get postgrescluster {{ pg_cluster_name }} \
+      -o jsonpath='instance={.status.instances[0].name} readyReplicas={.status.instances[0].readyReplicas} replicas={.status.instances[0].replicas}{"\n"}'
+
+    {% if pg_enable_backups | default(true) | bool %}
+    echo "== Waiting for pgBackRest repoHost.ready == true =="
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
+      wait --for=jsonpath='{.status.pgbackrest.repoHost.ready}'=true \
+      postgrescluster/{{ pg_cluster_name }} --timeout={{ pg_wait_timeout }}
+    {% endif %}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+
+- name: Show DB objects
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} get postgrescluster,pods,pvc,svc -o wide
+    echo
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} get secrets | grep -E '{{ pg_cluster_name }}|{{ pg_user_name }}|pguser' || true
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+  changed_when: false
