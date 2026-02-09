@@ -36,3 +36,4 @@
     - postgres_operator_install
     - awxdb_ha_postgrescluster_apply
     - awx_operator_install
+    - awx_cr_apply

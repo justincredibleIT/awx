@@ -1,14 +1,63 @@
 ---
-- name: Uninstall k3s (auto-detect server or agent)
+- name: Teardown k3s cluster (remove Longhorn, MetalLB, AWX/Crunchy, and k3s)
   hosts: all
   become: true
   gather_facts: false
 
   vars:
+    # --- k3s uninstall scripts ---
     k3s_server_uninstall: /usr/local/bin/k3s-uninstall.sh
     k3s_agent_uninstall: /usr/local/bin/k3s-agent-uninstall.sh
 
+    # Run kubectl from this node (must be a k3s SERVER). Override if you want.
+    teardown_runner_host: "{{ groups['k3s_servers'][0] | default(inventory_hostname) }}"
+    teardown_kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+
+    # Namespaces to delete (best-effort)
+    teardown_namespaces:
+      - awx
+      - longhorn-system
+      - metallb-system
+      - kube-system
+
+    # If you used different names, add them here
+    teardown_extra_namespaces: []
+
+    # CRDs to attempt to delete (best-effort)
+    teardown_crd_patterns:
+      - "longhorn.io"
+      - "metallb.io"
+      - "awx.ansible.com"
+      - "postgres-operator.crunchydata.com"
+      - "pgv2.percona.com"   # harmless if not present
+
+    # Whether to try kubectl-based teardown first (only works on servers with kubeconfig)
+    teardown_with_kubectl: true
+
+    # --- Node cleanup paths ---
+    teardown_paths:
+      - /etc/rancher
+      - /var/lib/rancher
+      - /var/lib/kubelet
+      - /var/lib/cni
+      - /etc/cni
+      - /opt/cni
+      - /run/k3s
+      - /run/flannel
+      - /var/log/containers
+      - /var/log/pods
+      - /var/lib/longhorn
+
+    # --- OPTIONAL: wipe underlying Longhorn disk paths (DANGEROUS) ---
+    teardown_wipe_longhorn_disks: false
+    teardown_longhorn_disk_paths:
+      # Set this to whatever your Longhorn disk paths are on each node
+      - /var/lib/longhorn
+
   tasks:
+    # ------------------------------------------------------------
+    # Preflight: find uninstall scripts
+    # ------------------------------------------------------------
     - name: Check if k3s server uninstall script exists
       ansible.builtin.stat:
         path: "{{ k3s_server_uninstall }}"
@@ -19,15 +68,152 @@
         path: "{{ k3s_agent_uninstall }}"
       register: k3s_agent_stat
 
+    # ------------------------------------------------------------
+    # Cluster teardown (kubectl) - run ONCE from a server
+    # ------------------------------------------------------------
+    - name: Check kubeconfig exists on runner host
+      ansible.builtin.stat:
+        path: "{{ teardown_kubeconfig_path }}"
+      register: teardown_kcfg
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+
+    - name: Disable kubectl teardown if kubeconfig missing
+      ansible.builtin.set_fact:
+        teardown_with_kubectl: false
+      when:
+        - teardown_with_kubectl | bool
+        - not teardown_kcfg.stat.exists
+      run_once: true
+
+    - name: Set combined namespace list
+      ansible.builtin.set_fact:
+        teardown_all_namespaces: "{{ (teardown_namespaces + teardown_extra_namespaces) | unique }}"
+      run_once: true
+
+    # ---- Delete common workloads first (best-effort) ----
+    - name: Delete AWX resources (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n awx delete awx --all --ignore-not-found
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n awx delete deploy,sts,ds,svc,cm,secret,job,cronjob --all --ignore-not-found
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    - name: Delete Crunchy PostgresClusters (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n awx delete postgrescluster --all --ignore-not-found
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n awx delete pgbouncer --all --ignore-not-found || true
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n awx delete job --all --ignore-not-found
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    - name: Delete MetalLB (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n metallb-system delete deploy,ds,svc,cm,secret,job --all --ignore-not-found
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    - name: Delete Longhorn (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n longhorn-system delete deploy,ds,svc,cm,secret,job --all --ignore-not-found
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n longhorn-system delete volumes.longhorn.io --all --ignore-not-found || true
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n longhorn-system delete engines.longhorn.io --all --ignore-not-found || true
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} -n longhorn-system delete replicas.longhorn.io --all --ignore-not-found || true
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    # ---- Delete namespaces (best-effort) ----
+    - name: Delete namespaces (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for ns in {{ teardown_all_namespaces | join(' ') }}; do
+          kubectl --kubeconfig {{ teardown_kubeconfig_path }} delete ns "$ns" --ignore-not-found || true
+        done
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    # ---- Delete CRDs (best-effort) ----
+    - name: Delete CRDs for Longhorn/MetalLB/AWX/Crunchy (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} get crd -o name | while read -r crd; do
+          for pat in {{ teardown_crd_patterns | join(' ') }}; do
+            if echo "$crd" | grep -q "$pat"; then
+              kubectl --kubeconfig {{ teardown_kubeconfig_path }} delete "$crd" --ignore-not-found || true
+            fi
+          done
+        done
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    # ---- Clean up stuck namespace finalizers (best-effort) ----
+    - name: Force-remove namespace finalizers (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for ns in {{ teardown_all_namespaces | join(' ') }}; do
+          if kubectl --kubeconfig {{ teardown_kubeconfig_path }} get ns "$ns" >/dev/null 2>&1; then
+            kubectl --kubeconfig {{ teardown_kubeconfig_path }} get ns "$ns" -o json \
+              | sed 's/"finalizers": \[[^]]*\]/"finalizers": []/' \
+              | kubectl --kubeconfig {{ teardown_kubeconfig_path }} replace --raw "/api/v1/namespaces/$ns/finalize" -f - || true
+          fi
+        done
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+      changed_when: false
+
+    # ------------------------------------------------------------
+    # Uninstall k3s on each node
+    # ------------------------------------------------------------
     - name: Uninstall k3s server
       ansible.builtin.command: "{{ k3s_server_uninstall }}"
       when: k3s_server_stat.stat.exists
+      failed_when: false
 
     - name: Uninstall k3s agent
       ansible.builtin.command: "{{ k3s_agent_uninstall }}"
       when:
         - not k3s_server_stat.stat.exists
         - k3s_agent_stat.stat.exists
+      failed_when: false
 
     - name: Report if no k3s installation found
       ansible.builtin.debug:
@@ -35,3 +221,35 @@
       when:
         - not k3s_server_stat.stat.exists
         - not k3s_agent_stat.stat.exists
+
+    # ------------------------------------------------------------
+    # Node cleanup (remove leftovers so a fresh install is clean)
+    # ------------------------------------------------------------
+    - name: Remove common k3s/Longhorn/CNI directories (best-effort)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ teardown_paths }}"
+      failed_when: false
+
+    - name: OPTIONAL - wipe Longhorn disk paths (DANGEROUS)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for p in {{ teardown_longhorn_disk_paths | join(' ') }}; do
+          if [ -d "$p" ]; then
+            rm -rf "$p"/*
+          fi
+        done
+      args:
+        executable: /bin/bash
+      when: teardown_wipe_longhorn_disks | bool
+      failed_when: false
+
+    - name: Restart container runtime services (best-effort)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        systemctl daemon-reload || true
+        systemctl restart containerd || true
+      args:
+        executable: /bin/bash
+      failed_when: false

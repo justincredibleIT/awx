@@ -1,0 +1,64 @@
+# Run kubectl from this node (must be a k3s SERVER)
+awx_runner_host: "{{ groups['k3s_servers'][0] }}"
+
+# Kubeconfig on that server
+awx_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# Namespace where AWX will live
+awx_namespace: "awx"
+
+# AWX CR name
+awx_name: "awx-server"
+
+# Replicas for AWX web/task
+awx_replicas: 3
+
+# Service exposure
+awx_service_type: "LoadBalancer"
+awx_service_annotations: ""
+
+# Optional requested MetalLB IP
+awx_loadbalancer_ip: ""
+
+# Admin user secret (optional)
+awx_admin_password_secret: ""
+
+# ---------------------------------------------------
+# Database settings
+# ---------------------------------------------------
+
+# Use operator-managed postgres (dev/test only)
+awx_manage_postgres: false
+
+# Name of the postgres configuration secret referenced by the AWX CR
+# This secret will be created automatically by the role if missing
+awx_postgres_configuration_secret: "{{ awx_name }}-postgres-configuration"
+
+# External DB connection inputs (used to create the configuration secret)
+awx_external_db_host: "awxdb-ha-primary"
+awx_external_db_port: 5432
+awx_external_db_name: "awx"
+awx_external_db_username: "awx"
+
+# How the operator should treat the DB
+awx_external_db_sslmode: "prefer"
+awx_external_db_target_session_attrs: "read-write"
+awx_external_db_type: "unmanaged"
+
+# ---------------------------------------------------
+# Persistence
+# ---------------------------------------------------
+
+awx_projects_persistence: true
+awx_projects_storage_class: "longhorn-ha-any"
+awx_projects_storage_size: "10Gi"
+
+# Optional extra settings
+awx_extra_settings: []
+
+# ---------------------------------------------------
+# Wait settings
+# ---------------------------------------------------
+
+awx_wait_timeout: "20m"
+awx_wait_ready: true
