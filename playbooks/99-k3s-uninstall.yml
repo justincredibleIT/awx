@@ -132,6 +132,22 @@
       failed_when: false
       changed_when: false
 
+    - name: Run Official Longhorn Uninstaller (Clean up finalizers and disks)
+      ansible.builtin.shell: |
+        set -euo pipefail
+
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} create -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.2/uninstall/uninstall.yaml || true
+        
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} wait --for=condition=complete job/longhorn-uninstall -n default --timeout=300s || true
+        
+        kubectl --kubeconfig {{ teardown_kubeconfig_path }} delete -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.2/uninstall/uninstall.yaml --ignore-not-found
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ teardown_runner_host }}"
+      when: teardown_with_kubectl | bool
+      failed_when: false
+
     - name: Delete Longhorn (best-effort)
       ansible.builtin.shell: |
         set -euo pipefail

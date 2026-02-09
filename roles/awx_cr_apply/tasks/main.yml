@@ -31,81 +31,69 @@
   run_once: true
   delegate_to: "{{ awx_runner_host }}"
 
-# ------------------------------
-# External DB: create postgres configuration secret (operator-supported)
-# ------------------------------
-# Name of the operator DB config secret:
-# recommend defaulting this in defaults/main.yml:
-#   awx_postgres_configuration_secret: "{{ awx_name }}-postgres-configuration"
-#
-# Secret keys created:
-# host, port, database, username, password, sslmode, target_session_attrs, type
+# -----------------------------------------------------------------------------
+# Bridge Secret: Reformat Crunchy PGO secret for the AWX Operator
+# -----------------------------------------------------------------------------
 
-- name: Set default postgres configuration secret name (if not provided)
+- name: Fetch credentials from Crunchy PGO secret
+  ansible.builtin.shell: |
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      get secret awxdb-ha-pguser-awx -o json
+  register: crunchy_secret_raw
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+
+- name: Extract Postgres password fact
   ansible.builtin.set_fact:
-    awx_postgres_configuration_secret: "{{ awx_postgres_configuration_secret | default(awx_name ~ '-postgres-configuration') }}"
-  when: not awx_manage_postgres | bool
+    pg_pass_b64: "{{ (crunchy_secret_raw.stdout | from_json).data.password }}"
   run_once: true
 
-- name: Check if postgres configuration secret exists
+- name: Create AWX configuration bridge secret
   ansible.builtin.shell: |
-    set -euo pipefail
-    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
-      get secret {{ awx_postgres_configuration_secret }} >/dev/null 2>&1
-  args:
-    executable: /bin/bash
-  register: awx_pg_cfg_secret_check
-  changed_when: false
-  failed_when: false
-  when: not awx_manage_postgres | bool
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} apply -f - <<EOF
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: "{{ awx_name }}-postgres-configuration"
+      namespace: "{{ awx_namespace }}"
+    type: Opaque
+    stringData:
+      host: "awxdb-ha-ha"
+      port: "5432"
+      database: "awx"
+      username: "awx"
+      password: "{{ pg_pass_b64 | b64decode }}"
+      sslmode: "prefer"
+      type: "unmanaged"
+    EOF
   run_once: true
   delegate_to: "{{ awx_runner_host }}"
 
-- name: Generate random DB password (only when postgres config secret is missing)
+- name: Set finalized secret name fact
   ansible.builtin.set_fact:
-    awx_generated_db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
-  when:
-    - not awx_manage_postgres | bool
-    - awx_pg_cfg_secret_check.rc != 0
+    awx_postgres_configuration_secret: "{{ awx_name }}-postgres-configuration"
   run_once: true
-  no_log: true
 
-- name: Create postgres configuration secret (only when missing)
+- name: Grant schema permissions to AWX user
   ansible.builtin.shell: |
-    set -euo pipefail
-    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
-      create secret generic {{ awx_postgres_configuration_secret }} \
-      --from-literal=host='{{ awx_external_db_host }}' \
-      --from-literal=port='{{ awx_external_db_port | int }}' \
-      --from-literal=database='{{ awx_external_db_name }}' \
-      --from-literal=username='{{ awx_external_db_username }}' \
-      --from-literal=password='{{ awx_generated_db_password }}' \
-      --from-literal=sslmode='prefer' \
-      --from-literal=target_session_attrs='read-write' \
-      --from-literal=type='unmanaged'
+    MASTER_POD=$(kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} get pods -l postgres-operator.crunchydata.com/role=master --no-headers -o custom-columns=":metadata.name" | head -n 1)
+    
+    if [ -z "$MASTER_POD" ]; then
+      echo "No master pod found"
+      exit 1
+    fi
+
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} exec -n {{ awx_namespace }} "$MASTER_POD" -- psql -d awx -c 'GRANT ALL ON SCHEMA public TO awx;'
   args:
-    executable: /bin/bash
-  when:
-    - not awx_manage_postgres | bool
-    - awx_pg_cfg_secret_check.rc != 0
+    executable: /bin/bash  # This fixes the "Illegal option" error
   run_once: true
   delegate_to: "{{ awx_runner_host }}"
-  no_log: true
-
-- name: Verify postgres configuration secret exists now (external DB)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
-      get secret {{ awx_postgres_configuration_secret }} >/dev/null
-  args:
-    executable: /bin/bash
-  when: not awx_manage_postgres | bool
-  run_once: true
-  delegate_to: "{{ awx_runner_host }}"
-  changed_when: false
-
+  register: grant_result
+  until: grant_result.rc == 0
+  retries: 10
+  delay: 15
 # ------------------------------
-# Render AWX CR (operator-supported fields only)
+# Render AWX CR
 # ------------------------------
 - name: Build AWX CR manifest object
   ansible.builtin.set_fact:
@@ -138,7 +126,8 @@
                   {
                     'projects_persistence': True,
                     'projects_storage_class': awx_projects_storage_class,
-                    'projects_storage_size': awx_projects_storage_size
+                    'projects_storage_size': awx_projects_storage_size,
+                    'projects_storage_access_mode': 'ReadWriteOnce'
                   }
                   if (awx_projects_persistence | bool)
                   else {'projects_persistence': False}
@@ -189,7 +178,7 @@
 # ------------------------------
 # Wait / Verify
 # ------------------------------
-- name: Wait for AWX CR to show a status (basic sanity)
+- name: Wait for AWX CR to show a status
   ansible.builtin.shell: |
     set -euo pipefail
     kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} get awx {{ awx_name }} -o yaml | sed -n '1,200p'
@@ -211,13 +200,10 @@
   when: awx_wait_ready | bool
   changed_when: false
 
-- name: Wait for AWX deployments to be available (best-effort)
+- name: Wait for AWX deployments to be available
   ansible.builtin.shell: |
     set -euo pipefail
     ns="{{ awx_namespace }}"
-
-    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" get deploy -o name
-
     for d in {{ awx_name }}-web {{ awx_name }}-task; do
       if kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" get deploy "$d" >/dev/null 2>&1; then
         kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" \
@@ -236,8 +222,6 @@
     kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} get pods -o wide
     echo
     kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} get svc -o wide
-    echo
-    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} get awx {{ awx_name }} -o wide
   args:
     executable: /bin/bash
   run_once: true

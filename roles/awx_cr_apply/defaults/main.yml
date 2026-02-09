@@ -32,7 +32,9 @@ awx_manage_postgres: false
 
 # Name of the postgres configuration secret referenced by the AWX CR
 # This secret will be created automatically by the role if missing
-awx_postgres_configuration_secret: "{{ awx_name }}-postgres-configuration"
+# awx_postgres_configuration_secret: "{{ awx_name }}-postgres-configuration"
+# awx_postgres_configuration_secret: "awxdb-ha-pguser-awx"
+awx_postgres_configuration_secret: "awx-server-postgres-configuration"
 
 # External DB connection inputs (used to create the configuration secret)
 awx_external_db_host: "awxdb-ha-primary"
