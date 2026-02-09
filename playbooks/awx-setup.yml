@@ -28,10 +28,11 @@
   roles:
     - longhorn_install
 
-- name: Install Crunchy Postgres Operator (PGO)
+- name: Install Crunchy Postgres Operator (PGO), apply, and awx_operator
   hosts: k3s_servers[0]
   become: true
   gather_facts: false
   roles:
     - postgres_operator_install
     - awxdb_ha_postgrescluster_apply
+    - awx_operator_install

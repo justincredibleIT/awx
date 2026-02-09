@@ -1,0 +1,23 @@
+# Run kubectl from this node (must be a k3s SERVER)
+awxop_runner_host: "{{ groups['k3s_servers'][0] }}"
+
+# Kubeconfig on that server
+awxop_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# Namespace where AWX Operator will run
+awxop_namespace: "awx"
+
+# Install method: kustomize (recommended)
+awxop_install_method: "kustomize"   # only supported in this role
+
+# Operator version/tag (pin this so rebuilds are deterministic)
+# Examples: "2.19.1" (you used before), or whatever you want to pin to.
+awxop_version: "2.19.1"
+
+# Where to fetch kustomize base from (GitHub)
+awxop_repo_owner: "ansible"
+awxop_repo_name: "awx-operator"
+
+# Wait behavior
+awxop_wait_timeout: "10m"
+awxop_wait_ready: true

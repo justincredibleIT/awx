@@ -1,0 +1,112 @@
+---
+- name: Validate runner host
+  ansible.builtin.assert:
+    that:
+      - awxop_runner_host is defined
+      - awxop_runner_host | length > 0
+    fail_msg: "awxop_runner_host is not set (expected groups['k3s_servers'][0])."
+
+- name: Assert kubeconfig exists on runner host
+  ansible.builtin.stat:
+    path: "{{ awxop_kubeconfig_path }}"
+  register: awxop_kcfg
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+
+- name: Fail if kubeconfig missing on runner host
+  ansible.builtin.assert:
+    that:
+      - awxop_kcfg.stat.exists
+    fail_msg: "k3s kubeconfig not found at {{ awxop_kubeconfig_path }} on {{ awxop_runner_host }}."
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+
+- name: Ensure AWX Operator namespace exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} get ns {{ awxop_namespace }} >/dev/null 2>&1 || \
+      kubectl --kubeconfig {{ awxop_kubeconfig_path }} create ns {{ awxop_namespace }}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+
+# ------------------------------
+# Install AWX Operator (kustomize)
+# ------------------------------
+- name: Create temp kustomize dir
+  ansible.builtin.file:
+    path: "/tmp/awx-operator-kustomize"
+    state: directory
+    mode: "0755"
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+
+- name: Write kustomization.yaml for AWX Operator
+  ansible.builtin.copy:
+    dest: "/tmp/awx-operator-kustomize/kustomization.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      namespace: {{ awxop_namespace }}
+      resources:
+        - https://github.com/{{ awxop_repo_owner }}/{{ awxop_repo_name }}/config/default?ref={{ awxop_version }}
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+
+- name: Apply AWX Operator kustomize bundle
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} apply -k /tmp/awx-operator-kustomize
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+  changed_when: true
+
+# ------------------------------
+# Wait / Verify
+# ------------------------------
+- name: Wait for AWX Operator deployment to be available
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ awxop_namespace }}"
+
+    # Find the operator deployment name (varies slightly by version)
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} -n "$ns" get deploy -o name
+    op_deploy="$(kubectl --kubeconfig {{ awxop_kubeconfig_path }} -n "$ns" get deploy -o name | grep -E 'awx-operator|controller-manager' | head -n1 || true)"
+    if [ -z "$op_deploy" ]; then
+      echo "Could not find an operator deployment in namespace $ns"
+      exit 1
+    fi
+
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} -n "$ns" \
+      wait --for=condition=Available "$op_deploy" --timeout={{ awxop_wait_timeout }}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+  when: awxop_wait_ready | bool
+
+- name: Verify AWX CRD exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} get crd awxs.awx.ansible.com >/dev/null
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+  changed_when: false
+
+- name: Show AWX Operator status
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} -n {{ awxop_namespace }} get pods -o wide
+    echo
+    kubectl --kubeconfig {{ awxop_kubeconfig_path }} -n {{ awxop_namespace }} get deploy -o wide
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awxop_runner_host }}"
+  changed_when: false
