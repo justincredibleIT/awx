@@ -51,6 +51,11 @@ spec:
               resources:
                 requests:
                   storage: {{ pg_backrest_repo_size | default('20Gi') }}
+          schedules:
+            full: "{{ pg_backrest_schedule_full | default('0 2 * * 0') }}"
+            differential: "{{ pg_backrest_schedule_diff | default('0 2 * * 1-6') }}"
+            # Optional: uncomment if you want frequent incrementals
+            # incremental: "{{ pg_backrest_schedule_incr | default('0 */6 * * *') }}"
       global:
         repo1-retention-full: "{{ pg_backrest_retention_full | default(2) }}"
         repo1-retention-diff: "{{ pg_backrest_retention_diff | default(3) }}"
