@@ -32,3 +32,7 @@ metallb_wait_timeout: 300s
 # Manifests shipped with this role (relative to role_path)
 metallb_ipaddresspool_manifest: files/ipaddresspool.yaml
 metallb_l2advertisement_manifest: files/l2advertisement.yaml
+
+# Add this to your existing defaults
+metallb_ip_range: 
+  - 192.168.1.101-192.168.1.105

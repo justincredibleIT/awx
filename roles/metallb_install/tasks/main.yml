@@ -87,15 +87,24 @@
   delegate_to: "{{ metallb_admin_runner }}"
   run_once: true
 
-# --- FIX: apply manifests without requiring role_path to exist on the admin runner ---
+# --- FIXED: Use inline stdin to allow variables from playbook ---
 
-- name: Apply IPAddressPool (stdin)
+- name: Apply IPAddressPool (templated from metallb_ip_range)
   ansible.builtin.command: >
     kubectl --kubeconfig {{ metallb_kubeconfig }}
     -n {{ metallb_namespace }}
     apply -f -
   args:
-    stdin: "{{ lookup('file', role_path ~ '/' ~ metallb_ipaddresspool_manifest) }}"
+    stdin: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: svc-pool-static
+        namespace: {{ metallb_namespace }}
+      spec:
+        addresses:
+          {{ metallb_ip_range | to_yaml }}
+        autoAssign: true
   delegate_to: "{{ metallb_admin_runner }}"
   run_once: true
 
@@ -105,7 +114,15 @@
     -n {{ metallb_namespace }}
     apply -f -
   args:
-    stdin: "{{ lookup('file', role_path ~ '/' ~ metallb_l2advertisement_manifest) }}"
+    stdin: |
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: l2-adv-static
+        namespace: {{ metallb_namespace }}
+      spec:
+        ipAddressPools:
+          - svc-pool-static
   delegate_to: "{{ metallb_admin_runner }}"
   run_once: true
 
