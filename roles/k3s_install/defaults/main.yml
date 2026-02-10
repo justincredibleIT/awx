@@ -12,9 +12,12 @@ kubeconfig_remote_path: "/etc/rancher/k3s/k3s.yaml"
 # Disable built-in traefik?
 k3s_disable_traefik: false
 
-# Endpoint used by JOINING nodes (must resolve + match cert SAN)
-k3s_server_endpoint: "awx01"
+# Endpoint used by JOINING nodes (dynamically picks first server in inventory)
+k3s_server_endpoint: "{{ groups['k3s_servers'][0] }}"
 
-# Extra flags (optional)
-k3s_server_extra_args: []
+# Extra flags (Crucial for HA and TLS stability)
+k3s_server_extra_args:
+  - "--tls-san {{ groups['k3s_servers'][0] }}"
+  - "--write-kubeconfig-mode 644"
+
 k3s_agent_extra_args: []
