@@ -10,8 +10,12 @@ awx_namespace: "awx"
 # AWX CR name
 awx_name: "awx-server"
 
-# Replicas for AWX web/task
+# Replicas for AWX web/task (match your HA env)
 awx_replicas: 3
+
+# Explicit web/task replica counts (match HA env)
+awx_web_replicas: 3
+awx_task_replicas: 3
 
 # Service exposure
 awx_service_type: "LoadBalancer"
@@ -31,9 +35,6 @@ awx_admin_password_secret: ""
 awx_manage_postgres: false
 
 # Name of the postgres configuration secret referenced by the AWX CR
-# This secret will be created automatically by the role if missing
-# awx_postgres_configuration_secret: "{{ awx_name }}-postgres-configuration"
-# awx_postgres_configuration_secret: "awxdb-ha-pguser-awx"
 awx_postgres_configuration_secret: "awx-server-postgres-configuration"
 
 # External DB connection inputs (used to create the configuration secret)
@@ -48,12 +49,38 @@ awx_external_db_target_session_attrs: "read-write"
 awx_external_db_type: "unmanaged"
 
 # ---------------------------------------------------
-# Persistence
+# Persistence  (MATCH HA ENV)
 # ---------------------------------------------------
 
-awx_projects_persistence: true
+# IMPORTANT: This avoids the Longhorn RWO multi-attach issue and matches your working HA cluster
+awx_projects_persistence: false
+
+# (These are ignored when projects_persistence=false; keep only if you want parity with your HA CR output)
 awx_projects_storage_class: "longhorn-ha-any"
 awx_projects_storage_size: "10Gi"
+
+# ---------------------------------------------------
+# Topology spread (MATCH HA ENV)
+# ---------------------------------------------------
+
+awx_enable_topology_spread: true
+
+# Use the same form your HA env shows (string block in CR)
+awx_web_topology_spread_constraints: |
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: {{ awx_name }}-web
+
+awx_task_topology_spread_constraints: |
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: {{ awx_name }}-task
 
 # Optional extra settings
 awx_extra_settings: []
@@ -64,3 +91,13 @@ awx_extra_settings: []
 
 awx_wait_timeout: "20m"
 awx_wait_ready: true
+
+# --- RWO projects coordination (DISABLED; not needed when projects_persistence=false) ---
+awx_pin_web_task_same_node: false
+
+# If set, force web+task onto this node (unused when pinning disabled)
+awx_pin_node_name: ""
+
+# Node label key/value (unused when pinning disabled)
+awx_pin_label_key: "awx-projects"
+awx_pin_label_value: "rwo"

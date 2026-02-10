@@ -175,6 +175,113 @@
   run_once: true
   delegate_to: "{{ awx_runner_host }}"
 
+# -----------------------------------------------------------------------------
+# RWO Projects: Pin web + task to same node (prevents Multi-Attach)
+# -----------------------------------------------------------------------------
+
+- name: RWO pinning | Wait for AWX deployments to exist
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ awx_namespace }}"
+    for d in "{{ awx_name }}-web" "{{ awx_name }}-task"; do
+      for i in $(seq 1 60); do
+        if kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" get deploy "$d" >/dev/null 2>&1; then
+          echo "Found deploy $d"
+          break
+        fi
+        sleep 2
+      done
+      kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" get deploy "$d" >/dev/null
+    done
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_pin_web_task_same_node | bool
+  changed_when: false
+
+- name: RWO pinning | Determine node to pin to (explicit or auto from running web pod)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ awx_namespace }}"
+
+    if [ -n "{{ awx_pin_node_name | default('') }}" ]; then
+      echo "{{ awx_pin_node_name }}"
+      exit 0
+    fi
+
+    # Wait for at least one web pod to appear, then use its node
+    for i in $(seq 1 60); do
+      node=$(kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" \
+        get pod -l app.kubernetes.io/name="{{ awx_name }}-web" \
+        -o jsonpath='{.items[0].spec.nodeName}' 2>/dev/null || true)
+      if [ -n "$node" ]; then
+        echo "$node"
+        exit 0
+      fi
+      sleep 2
+    done
+
+    echo "ERROR: Could not determine a web pod node to pin to."
+    exit 1
+  args:
+    executable: /bin/bash
+  register: awx_pin_node
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_pin_web_task_same_node | bool
+  changed_when: false
+
+- name: RWO pinning | Label pin node
+  ansible.builtin.shell: |
+    set -euo pipefail
+    node="{{ awx_pin_node.stdout }}"
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} label node "$node" \
+      "{{ awx_pin_label_key }}={{ awx_pin_label_value }}" --overwrite
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_pin_web_task_same_node | bool
+
+- name: RWO pinning | Patch web deployment nodeSelector
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ awx_namespace }}"
+    dep="{{ awx_name }}-web"
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" patch deploy "$dep" --type merge -p \
+      '{"spec":{"template":{"spec":{"nodeSelector":{"{{ awx_pin_label_key }}":"{{ awx_pin_label_value }}"}}}}}'
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_pin_web_task_same_node | bool
+
+- name: RWO pinning | Patch task deployment nodeSelector
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ awx_namespace }}"
+    dep="{{ awx_name }}-task"
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" patch deploy "$dep" --type merge -p \
+      '{"spec":{"template":{"spec":{"nodeSelector":{"{{ awx_pin_label_key }}":"{{ awx_pin_label_value }}"}}}}}'
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_pin_web_task_same_node | bool
+
+- name: RWO pinning | Restart web/task pods to pick up new scheduling
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ns="{{ awx_namespace }}"
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" rollout restart deploy "{{ awx_name }}-web"
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" rollout restart deploy "{{ awx_name }}-task"
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_pin_web_task_same_node | bool
+
 # ------------------------------
 # Wait / Verify
 # ------------------------------
