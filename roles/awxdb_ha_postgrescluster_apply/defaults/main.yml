@@ -9,7 +9,7 @@ pg_namespace: "awx"
 pg_cluster_name: "awxdb-ha"
 
 # HA sizing
-pg_instances: 1
+pg_instances: 3
 
 # Storage (Longhorn)
 # PGDATA uses your HA class (3 replicas) for resilience
