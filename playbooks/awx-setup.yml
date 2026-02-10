@@ -36,4 +36,15 @@
     - postgres_operator_install
     - awxdb_ha_postgrescluster_apply
     - awx_operator_install
-    - awx_cr_apply
+    - role: awx_cr_apply
+      vars:
+        # Override replicas here
+        awx_replicas: 4
+        # awx_web_replicas: 4
+        # awx_task_replicas: 4
+        
+        # Override storage size here
+        awx_projects_persistence: false
+        awx_projects_storage_size: "10Gi"
+        awx_projects_storage_class: "longhorn-ha-any"
+    - awx_get_creds

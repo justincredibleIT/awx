@@ -1,0 +1,30 @@
+---
+- name: Get AWX Admin Password
+  ansible.builtin.shell: |
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      get secret {{ awx_name }}-admin-password -o jsonpath='{.data.password}' | base64 -d
+  register: awx_pass_raw
+  delegate_to: "{{ awx_runner_host }}"
+  run_once: true
+  changed_when: false
+
+- name: Get AWX Service URL
+  ansible.builtin.shell: |
+    # This tries to get the LoadBalancer IP, falls back to Hostname if on AWS/GCP
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      get svc {{ awx_name }}-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}'
+  register: awx_url_raw
+  delegate_to: "{{ awx_runner_host }}"
+  run_once: true
+  changed_when: false
+
+- name: Display AWX Access Information
+  ansible.builtin.debug:
+    msg: 
+      - "----------------------------------------------------------"
+      - "AWX ACCESS DETAILS"
+      - "----------------------------------------------------------"
+      - "URL:      http://{{ awx_url_raw.stdout }}"
+      - "Username: admin"
+      - "Password: {{ awx_pass_raw.stdout }}"
+      - "----------------------------------------------------------"

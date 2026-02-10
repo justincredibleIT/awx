@@ -11,11 +11,11 @@ awx_namespace: "awx"
 awx_name: "awx-server"
 
 # Replicas for AWX web/task (match your HA env)
-awx_replicas: 3
+# awx_replicas: 3
 
-# Explicit web/task replica counts (match HA env)
-awx_web_replicas: 3
-awx_task_replicas: 3
+# # Explicit web/task replica counts (match HA env)
+# awx_web_replicas: 3
+# awx_task_replicas: 3
 
 # Service exposure
 awx_service_type: "LoadBalancer"
@@ -53,11 +53,11 @@ awx_external_db_type: "unmanaged"
 # ---------------------------------------------------
 
 # IMPORTANT: This avoids the Longhorn RWO multi-attach issue and matches your working HA cluster
-awx_projects_persistence: false
+# awx_projects_persistence: false
 
 # (These are ignored when projects_persistence=false; keep only if you want parity with your HA CR output)
-awx_projects_storage_class: "longhorn-ha-any"
-awx_projects_storage_size: "10Gi"
+# awx_projects_storage_class: "longhorn-ha-any"
+# awx_projects_storage_size: "10Gi"
 
 # ---------------------------------------------------
 # Topology spread (MATCH HA ENV)

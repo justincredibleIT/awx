@@ -295,28 +295,46 @@
   delegate_to: "{{ awx_runner_host }}"
   changed_when: false
 
+# ------------------------------
+# Wait / Verify
+# ------------------------------
+
 - name: Wait for AWX web service to exist
   ansible.builtin.shell: |
-    set -euo pipefail
     kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
-      get svc {{ awx_name }}-service >/dev/null
-  args:
-    executable: /bin/bash
+      get svc {{ awx_name }}-service
+  register: awx_svc_check
+  # Retry for 15 minutes (60 retries * 15 seconds)
+  until: awx_svc_check.rc == 0
+  retries: 60
+  delay: 15
   run_once: true
   delegate_to: "{{ awx_runner_host }}"
   when: awx_wait_ready | bool
   changed_when: false
 
-- name: Wait for AWX deployments to be available
+- name: Wait for AWX deployments to exist before waiting for 'Available'
+  ansible.builtin.shell: |
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      get deploy {{ awx_name }}-web && \
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      get deploy {{ awx_name }}-task
+  register: awx_deploy_check
+  until: awx_deploy_check.rc == 0
+  retries: 60
+  delay: 15
+  run_once: true
+  delegate_to: "{{ awx_runner_host }}"
+  when: awx_wait_ready | bool
+  changed_when: false
+
+- name: Wait for AWX deployments to be available (Ready)
   ansible.builtin.shell: |
     set -euo pipefail
-    ns="{{ awx_namespace }}"
-    for d in {{ awx_name }}-web {{ awx_name }}-task; do
-      if kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" get deploy "$d" >/dev/null 2>&1; then
-        kubectl --kubeconfig {{ awx_kubeconfig_path }} -n "$ns" \
-          wait --for=condition=Available "deploy/$d" --timeout={{ awx_wait_timeout }}
-      fi
-    done
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      wait --for=condition=Available "deploy/{{ awx_name }}-web" --timeout={{ awx_wait_timeout }}
+    kubectl --kubeconfig {{ awx_kubeconfig_path }} -n {{ awx_namespace }} \
+      wait --for=condition=Available "deploy/{{ awx_name }}-task" --timeout={{ awx_wait_timeout }}
   args:
     executable: /bin/bash
   run_once: true
