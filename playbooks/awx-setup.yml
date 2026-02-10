@@ -34,8 +34,16 @@
   gather_facts: false
   roles:
     - postgres_operator_install
-    - awxdb_ha_postgrescluster_apply
+
+    - role: awxdb_ha_postgrescluster_apply
+      vars:
+        pg_instances: 3
+        pg_pgdata_size: "10Gi"
+        pg_backrest_repo_size: "20Gi"
+        pg_storage_class: "longhorn-ha-any"
+
     - awx_operator_install
+
     - role: awx_cr_apply
       vars:
         # Override replicas here

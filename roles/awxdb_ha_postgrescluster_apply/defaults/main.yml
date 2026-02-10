@@ -9,14 +9,14 @@ pg_namespace: "awx"
 pg_cluster_name: "awxdb-ha"
 
 # HA sizing
-pg_instances: 3
+# pg_instances: 3
 
 # Storage (Longhorn)
 # PGDATA uses your HA class (3 replicas) for resilience
 pg_storage_class: "longhorn-ha-any"
 
 # For 40GB nodes: keep PGDATA modest (3 replicas -> ~15Gi raw)
-pg_pgdata_size: "5Gi"
+# pg_pgdata_size: "5Gi"
 
 # Backups (pgBackRest)
 pg_enable_backups: true
@@ -26,7 +26,7 @@ pg_enable_backups: true
 pg_backrest_storage_class: "longhorn"   # change to "longhorn-ha-any" ONLY if you have disk headroom
 
 # For 40GB nodes: keep repo modest
-pg_backrest_repo_size: "10Gi"
+# pg_backrest_repo_size: "10Gi"
 
 # Retention: small to avoid filling nodes
 pg_backrest_retention_full: 1
