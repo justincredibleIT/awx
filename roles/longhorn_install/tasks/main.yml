@@ -51,8 +51,6 @@
         | combine(
             (
               {
-                # These keys are supported in many chart versions; if a key is ignored,
-                # storage restriction (default-node-selector) still enforces workers-only replicas.
                 'longhornManager': {
                   'nodeSelector': { (longhorn_worker_label_key): (longhorn_worker_label_value) }
                 },
