@@ -6,6 +6,15 @@
       - longhorn_runner_host | length > 0
     fail_msg: "longhorn_runner_host is not set (expected groups['k3s_servers'][0])."
 
+- name: Validate worker nodes group is populated
+  ansible.builtin.assert:
+    that:
+      - longhorn_worker_nodes is defined
+      - longhorn_worker_nodes | length > 0
+    fail_msg: "longhorn_worker_nodes is empty. Set longhorn_worker_nodes to your worker group (e.g., groups['k3s_agents'])."
+  when:
+    - longhorn_storage_workers_only | bool or longhorn_components_workers_only | bool or longhorn_label_workers | bool
+
 - name: Assert kubeconfig exists on runner host
   ansible.builtin.stat:
     path: "{{ longhorn_kubeconfig_path }}"
@@ -31,6 +40,37 @@
   run_once: true
   delegate_to: "{{ longhorn_runner_host }}"
 
+# -------------------------------------------------------------------
+# Build effective Helm values (merge user values + workers-only selectors)
+# -------------------------------------------------------------------
+- name: Build effective Helm values (merge user values + optional workers-only selectors)
+  ansible.builtin.set_fact:
+    longhorn_helm_values_effective: >-
+      {{
+        (longhorn_helm_values | default({}))
+        | combine(
+            (
+              {
+                # These keys are supported in many chart versions; if a key is ignored,
+                # storage restriction (default-node-selector) still enforces workers-only replicas.
+                'longhornManager': {
+                  'nodeSelector': { (longhorn_worker_label_key): (longhorn_worker_label_value) }
+                },
+                'csi': {
+                  'nodeSelector': { (longhorn_worker_label_key): (longhorn_worker_label_value) }
+                },
+                'longhornUI': {
+                  'nodeSelector': { (longhorn_worker_label_key): (longhorn_worker_label_value) }
+                }
+              }
+              if (longhorn_components_workers_only | bool)
+              else {}
+            ),
+            recursive=True
+          )
+      }}
+  run_once: true
+
 - name: Add Longhorn Helm repo + update
   ansible.builtin.shell: |
     set -euo pipefail
@@ -44,11 +84,11 @@
 - name: Write Helm values file if needed
   ansible.builtin.copy:
     dest: /tmp/longhorn-values.yml
-    content: "{{ longhorn_helm_values | to_nice_yaml }}"
+    content: "{{ longhorn_helm_values_effective | to_nice_yaml }}"
     mode: "0600"
   run_once: true
   delegate_to: "{{ longhorn_runner_host }}"
-  when: longhorn_helm_values | length > 0
+  when: longhorn_helm_values_effective | length > 0
 
 - name: Install/upgrade Longhorn via Helm (uses runner kubeconfig)
   ansible.builtin.shell: |
@@ -64,7 +104,7 @@
     args+=( --version {{ longhorn_chart_version }} )
     {% endif %}
 
-    {% if longhorn_helm_values | length > 0 %}
+    {% if longhorn_helm_values_effective | length > 0 %}
     args+=( -f /tmp/longhorn-values.yml )
     {% endif %}
 
@@ -106,7 +146,6 @@
     wait_deploy longhorn-driver-deployer
     rollout_ds longhorn-manager
 
-    # common CSI pieces (vary by version/chart)
     rollout_ds longhorn-csi-plugin
     wait_deploy csi-attacher
     wait_deploy csi-provisioner
@@ -117,6 +156,51 @@
   run_once: true
   delegate_to: "{{ longhorn_runner_host }}"
 
+# -----------------------------------------
+# Workers-only enforcement (labels + settings)
+# -----------------------------------------
+- name: Label worker nodes for Longhorn (node-role=worker)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    {% for n in longhorn_worker_nodes %}
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} label node {{ n }} {{ longhorn_worker_label_key }}={{ longhorn_worker_label_value }} --overwrite
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+  when: longhorn_label_workers | bool
+
+- name: Restrict Longhorn replica scheduling to worker nodes (default-node-selector)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n {{ longhorn_namespace }} \
+      patch settings.longhorn.io default-node-selector --type=merge \
+      -p '{"value":"{{ longhorn_worker_label_key }}={{ longhorn_worker_label_value }}"}'
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+  when: longhorn_storage_workers_only | bool
+
+- name: Disable Longhorn scheduling on controllers
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for n in {{ longhorn_controller_nodes | join(' ') }}; do
+      kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n {{ longhorn_namespace }} \
+        patch nodes.longhorn.io "$n" --type=merge -p '{"spec":{"allowScheduling":false}}' || true
+    done
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ longhorn_runner_host }}"
+  when:
+    - longhorn_disable_scheduling_on_controllers | bool
+    - longhorn_controller_nodes | length > 0
+
+# --------------------------------
+# StorageClasses (default + HA)
+# --------------------------------
 - name: Manage StorageClasses (default + HA)
   when: longhorn_manage_storageclasses | bool
   block:
@@ -137,13 +221,13 @@
                 )
               },
               'provisioner': 'driver.longhorn.io',
-              'reclaimPolicy': 'Delete',
-              'volumeBindingMode': 'Immediate',
+              'reclaimPolicy': (longhorn_default_reclaim_policy | default('Delete')),
+              'volumeBindingMode': (longhorn_default_volume_binding_mode | default('Immediate')),
               'allowVolumeExpansion': True,
               'parameters': {
-                'numberOfReplicas': '2',
-                'staleReplicaTimeout': '30',
-                'fsType': 'ext4'
+                'numberOfReplicas': (longhorn_default_replica_count | string),
+                'staleReplicaTimeout': (longhorn_default_stale_replica_timeout | string),
+                'fsType': (longhorn_default_fs_type | default('ext4'))
               }
             }
           }}
@@ -154,13 +238,13 @@
               'kind': 'StorageClass',
               'metadata': {'name': longhorn_ha_storageclass_name},
               'provisioner': 'driver.longhorn.io',
-              'reclaimPolicy': 'Delete',
-              'volumeBindingMode': 'Immediate',
+              'reclaimPolicy': (longhorn_ha_reclaim_policy | default('Delete')),
+              'volumeBindingMode': (longhorn_ha_volume_binding_mode | default('Immediate')),
               'allowVolumeExpansion': True,
               'parameters': {
                 'numberOfReplicas': (longhorn_ha_replica_count | string),
-                'staleReplicaTimeout': '30',
-                'fsType': 'ext4'
+                'staleReplicaTimeout': (longhorn_ha_stale_replica_timeout | string),
+                'fsType': (longhorn_ha_fs_type | default('ext4'))
               }
             }
           }}
@@ -208,12 +292,26 @@
       delegate_to: "{{ longhorn_runner_host }}"
       when: longhorn_create_ha_storageclass | bool
 
+    - name: Unset chart-created StorageClass as default (safe)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl --kubeconfig {{ longhorn_kubeconfig_path }} patch storageclass {{ longhorn_chart_storageclass_name }} \
+          -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' || true
+      args:
+        executable: /bin/bash
+      run_once: true
+      delegate_to: "{{ longhorn_runner_host }}"
+      when: longhorn_unset_chart_default_storageclass | bool
+
 - name: Show Longhorn status
   ansible.builtin.shell: |
     set -euo pipefail
     kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n {{ longhorn_namespace }} get pods -o wide
     echo
     kubectl --kubeconfig {{ longhorn_kubeconfig_path }} get storageclass
+    echo
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n {{ longhorn_namespace }} get settings.longhorn.io default-node-selector -o jsonpath='{.value}{"\n"}' || true
+    kubectl --kubeconfig {{ longhorn_kubeconfig_path }} -n {{ longhorn_namespace }} get nodes.longhorn.io -o custom-columns=NAME:.metadata.name,ALLOW:.spec.allowScheduling,READY:.status.conditions[?(@.type=="Ready")].status
   args:
     executable: /bin/bash
   run_once: true

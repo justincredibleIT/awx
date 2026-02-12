@@ -15,13 +15,41 @@ longhorn_release_name: "longhorn"
 longhorn_chart_name: "longhorn/longhorn"
 longhorn_chart_version: ""   # optional pin, else latest
 
-# Optional Helm values dict
+# Optional Helm values dict (user-supplied). We will merge our worker-only selectors into this.
 longhorn_helm_values: {}
 
 # Wait timeouts
 longhorn_wait_timeout: "15m"
 
+# ----------------------------
+# Workers-only policy settings
+# ----------------------------
+
+# Which nodes are "workers" for Longhorn storage scheduling
+# Adjust this if your workers group is not k3s_agents
+longhorn_worker_nodes: "{{ groups['k3s_agents'] | default([]) }}"
+longhorn_controller_nodes: "{{ groups['k3s_servers'] | default([]) }}"
+
+# Label key/value used to target workers
+longhorn_worker_label_key: "node-role"
+longhorn_worker_label_value: "worker"
+
+# Automatically label worker nodes
+longhorn_label_workers: true
+
+# Enforce that Longhorn volume replicas schedule only on worker nodes
+longhorn_storage_workers_only: true
+
+# Prevent controllers from ever being used for Longhorn replica scheduling
+longhorn_disable_scheduling_on_controllers: true
+
+# Optional: force Longhorn system pods to run only on workers (manager/csi/ui)
+# Storage scheduling restriction above is the critical part; this is optional.
+longhorn_components_workers_only: true
+
+# --------------------------------
 # StorageClasses (optional)
+# --------------------------------
 longhorn_manage_storageclasses: true
 
 # Create OUR OWN default storageclass (do not use "longhorn" - chart typically creates it)
