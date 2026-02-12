@@ -29,7 +29,7 @@
           - 192.168.1.105-192.168.1.105
 
 - name: Install Longhorn (run kubectl/helm from first server)
-  hosts: k3s_all
+  hosts: k3s_servers[0]
   become: true
   gather_facts: false
   roles:
