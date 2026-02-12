@@ -6,6 +6,15 @@
       - pgo_runner_host | length > 0
     fail_msg: "pgo_runner_host is not set (expected groups['k3s_servers'][0])."
 
+- name: Validate worker nodes group is populated (if enforcing workers-only)
+  ansible.builtin.assert:
+    that:
+      - pgo_worker_nodes is defined
+      - pgo_worker_nodes | length > 0
+    fail_msg: "pgo_worker_nodes is empty. Set pgo_worker_nodes to your worker group (e.g., groups['k3s_agents'])."
+  when:
+    - pgo_operator_workers_only | bool or pgo_label_workers | bool
+
 - name: Assert kubeconfig exists on runner host
   ansible.builtin.stat:
     path: "{{ pgo_kubeconfig_path }}"
@@ -31,7 +40,38 @@
   run_once: true
   delegate_to: "{{ pgo_runner_host }}"
 
-# --- Key change: OCI chart install (no helm repo add) ---
+- name: Label worker nodes for PGO (node-role=worker)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    {% for n in pgo_worker_nodes %}
+    kubectl --kubeconfig {{ pgo_kubeconfig_path }} label node {{ n }} {{ pgo_worker_label_key }}={{ pgo_worker_label_value }} --overwrite
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pgo_runner_host }}"
+  when: pgo_label_workers | bool
+
+# -------------------------------------------------------------------
+# Build effective Helm values (merge user values + workers-only selector)
+# -------------------------------------------------------------------
+- name: Build effective Helm values (merge user values + optional workers-only nodeSelector)
+  ansible.builtin.set_fact:
+    pgo_helm_values_effective: >-
+      {{
+        (pgo_helm_values | default({}))
+        | combine(
+            (
+              { 'nodeSelector': { (pgo_worker_label_key): (pgo_worker_label_value) } }
+              if (pgo_operator_workers_only | bool)
+              else {}
+            ),
+            recursive=True
+          )
+      }}
+  run_once: true
+
+# --- OCI chart install (no helm repo add) ---
 
 - name: DNS sanity check for Crunchy OCI registry (must resolve)
   ansible.builtin.shell: |
@@ -45,9 +85,9 @@
 - name: Write Helm values file if needed
   ansible.builtin.copy:
     dest: /tmp/pgo-values.yml
-    content: "{{ pgo_helm_values | to_nice_yaml }}"
+    content: "{{ pgo_helm_values_effective | to_nice_yaml }}"
     mode: "0600"
-  when: pgo_helm_values | length > 0
+  when: pgo_helm_values_effective | length > 0
   run_once: true
   delegate_to: "{{ pgo_runner_host }}"
 
@@ -65,7 +105,7 @@
     args+=( --version "{{ pgo_chart_version }}" )
     {% endif %}
 
-    {% if pgo_helm_values | length > 0 %}
+    {% if pgo_helm_values_effective | length > 0 %}
     args+=( -f /tmp/pgo-values.yml )
     {% endif %}
 
@@ -74,7 +114,6 @@
     executable: /bin/bash
   environment:
     KUBECONFIG: "{{ pgo_kubeconfig_path }}"
-    # keep helm state deterministic when running as root
     HELM_CONFIG_HOME: /root/.config/helm
     HELM_CACHE_HOME: /root/.cache/helm
     HELM_DATA_HOME: /root/.local/share/helm
@@ -108,7 +147,7 @@
   delegate_to: "{{ pgo_runner_host }}"
   changed_when: false
 
-- name: Show PGO status
+- name: Show PGO status (confirm nodes are workers only)
   ansible.builtin.shell: |
     set -euo pipefail
     kubectl --kubeconfig {{ pgo_kubeconfig_path }} -n {{ pgo_namespace }} get pods -o wide

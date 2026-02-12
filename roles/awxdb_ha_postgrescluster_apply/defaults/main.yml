@@ -1,3 +1,4 @@
+---
 # Runner (must be a k3s server with kubeconfig)
 pg_runner_host: "{{ groups['k3s_servers'][0] }}"
 pg_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
@@ -41,3 +42,20 @@ pg_user_name: "awx"
 # Wait behavior
 pg_wait_ready: true
 pg_wait_timeout: "20m"
+
+# ----------------------------
+# Workers-only scheduling
+# ----------------------------
+
+# Workers group (your 04-06). Adjust if your workers group differs.
+pg_worker_nodes: "{{ groups['k3s_agents'] | default([]) }}"
+
+# Reuse the same label scheme you're using for Longhorn
+pg_worker_label_key: "node-role"
+pg_worker_label_value: "worker"
+
+# Auto-label workers before applying the PostgresCluster
+pg_label_workers: true
+
+# Enforce that Postgres instance pods + pgBackRest repoHost schedule only on workers
+pg_workers_only: true

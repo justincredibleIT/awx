@@ -45,8 +45,8 @@
     - role: awxdb_ha_postgrescluster_apply
       vars:
         pg_instances: 3
-        pg_pgdata_size: "10Gi"
-        pg_backrest_repo_size: "20Gi"
+        pg_pgdata_size: "50Gi"
+        pg_backrest_repo_size: "100Gi"
         pg_storage_class: "longhorn-ha-any"
 
     - awx_operator_install
@@ -54,12 +54,12 @@
     - role: awx_cr_apply
       vars:
         # Override replicas here
-        awx_replicas: 4
+        awx_replicas: 3
         # awx_web_replicas: 4
         # awx_task_replicas: 4
         
         # Override storage size here
         awx_projects_persistence: false
-        awx_projects_storage_size: "10Gi"
+#        awx_projects_storage_size: "10Gi"
         awx_projects_storage_class: "longhorn-ha-any"
     - awx_get_creds

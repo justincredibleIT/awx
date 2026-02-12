@@ -15,6 +15,13 @@ spec:
   instances:
     - name: instance1
       replicas: {{ pg_instances | int }}
+
+{% if pg_workers_only | default(true) | bool %}
+      # Workers-only: keep Postgres instance pods off controllers
+      nodeSelector:
+        {{ pg_worker_label_key }}: {{ pg_worker_label_value }}
+{% endif %}
+
       dataVolumeClaimSpec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: {{ pg_storage_class }}
@@ -42,6 +49,14 @@ spec:
 {% if (pg_enable_backups | default(true)) | bool %}
   backups:
     pgbackrest:
+
+{% if pg_workers_only | default(true) | bool %}
+      # Workers-only: keep pgBackRest repo host pod off controllers
+      repoHost:
+        nodeSelector:
+          {{ pg_worker_label_key }}: {{ pg_worker_label_value }}
+{% endif %}
+
       repos:
         - name: repo1
           volume:

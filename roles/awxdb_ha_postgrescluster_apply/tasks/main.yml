@@ -6,6 +6,15 @@
       - pg_runner_host | length > 0
     fail_msg: "pg_runner_host is not set (expected groups['k3s_servers'][0])."
 
+- name: Validate worker nodes group is populated (if workers-only or labeling enabled)
+  ansible.builtin.assert:
+    that:
+      - pg_worker_nodes is defined
+      - pg_worker_nodes | length > 0
+    fail_msg: "pg_worker_nodes is empty. Set pg_worker_nodes to your worker group (e.g., groups['k3s_agents'])."
+  when:
+    - pg_workers_only | bool or pg_label_workers | bool
+
 - name: Assert kubeconfig exists on runner host
   ansible.builtin.stat:
     path: "{{ pg_kubeconfig_path }}"
@@ -33,6 +42,18 @@
   run_once: true
   delegate_to: "{{ pg_runner_host }}"
   changed_when: false
+
+- name: Label worker nodes for Postgres scheduling (node-role=worker)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    {% for n in pg_worker_nodes %}
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} label node {{ n }} {{ pg_worker_label_key }}={{ pg_worker_label_value }} --overwrite
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+  when: pg_label_workers | bool
 
 - name: Render PostgresCluster manifest to runner
   ansible.builtin.template:
