@@ -1,0 +1,48 @@
+---
+- name: Render Longhorn StorageClass manifests to runner
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ longhorn_tmp_dir }}/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: "storageclass-longhorn-rwo.yaml.j2", dest: "storageclass-longhorn-rwo.yaml" }
+    - { src: "storageclass-longhorn-ha-any.yaml.j2", dest: "storageclass-longhorn-ha-any.yaml" }
+  when: longhorn_manage_storageclasses | bool
+  delegate_to: "{{ longhorn_runner_host }}"
+  run_once: true
+
+- name: Apply Longhorn StorageClasses
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ longhorn_kubeconfig_path }}"
+      - apply
+      - -f
+      - "{{ longhorn_tmp_dir }}/{{ item }}"
+  loop:
+    - storageclass-longhorn-rwo.yaml
+    - storageclass-longhorn-ha-any.yaml
+  when: longhorn_manage_storageclasses | bool
+  delegate_to: "{{ longhorn_runner_host }}"
+  run_once: true
+
+- name: Unset chart-created Longhorn StorageClass as default (if present)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ longhorn_kubeconfig_path }}"
+      - patch
+      - storageclass
+      - "{{ longhorn_chart_storageclass_name }}"
+      - --type=merge
+      - -p
+      - '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+  when:
+    - longhorn_manage_storageclasses | bool
+    - longhorn_unset_chart_default_storageclass | bool
+  delegate_to: "{{ longhorn_runner_host }}"
+  run_once: true
+  changed_when: false
+  failed_when: false

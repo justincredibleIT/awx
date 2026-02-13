@@ -1,0 +1,18 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ longhorn_default_storageclass_name }}
+  annotations:
+{% if longhorn_set_default_storageclass | bool %}
+    storageclass.kubernetes.io/is-default-class: "true"
+{% endif %}
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: {{ longhorn_default_reclaim_policy }}
+volumeBindingMode: {{ longhorn_default_volume_binding_mode }}
+parameters:
+  numberOfReplicas: "{{ longhorn_default_replica_count }}"
+  staleReplicaTimeout: "{{ longhorn_default_stale_replica_timeout }}"
+  fromBackup: ""
+  fsType: "{{ longhorn_default_fs_type }}"
+  dataLocality: "disabled"

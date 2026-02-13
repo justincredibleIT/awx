@@ -1,0 +1,14 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ longhorn_ha_storageclass_name }}
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: {{ longhorn_ha_reclaim_policy }}
+volumeBindingMode: {{ longhorn_ha_volume_binding_mode }}
+parameters:
+  numberOfReplicas: "{{ longhorn_ha_replica_count }}"
+  staleReplicaTimeout: "{{ longhorn_ha_stale_replica_timeout }}"
+  fromBackup: ""
+  fsType: "{{ longhorn_ha_fs_type }}"
+  dataLocality: "disabled"

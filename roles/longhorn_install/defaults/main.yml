@@ -61,7 +61,7 @@ longhorn_unset_chart_default_storageclass: true
 longhorn_chart_storageclass_name: "longhorn"
 
 # Default SC parameters (2 replicas is typical for general workloads)
-longhorn_default_replica_count: 2
+longhorn_default_replica_count: 1
 longhorn_default_stale_replica_timeout: 30
 longhorn_default_fs_type: "ext4"
 longhorn_default_reclaim_policy: "Delete"
@@ -70,7 +70,7 @@ longhorn_default_volume_binding_mode: "Immediate"
 # Optional HA StorageClass (3 replicas, good for important workloads like DBs)
 longhorn_create_ha_storageclass: true
 longhorn_ha_storageclass_name: "longhorn-ha-any"
-longhorn_ha_replica_count: 3
+longhorn_ha_replica_count: 2
 longhorn_ha_stale_replica_timeout: 30
 longhorn_ha_fs_type: "ext4"
 longhorn_ha_reclaim_policy: "Delete"
