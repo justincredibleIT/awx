@@ -55,7 +55,7 @@ pg_worker_label_key: "node-role"
 pg_worker_label_value: "worker"
 
 # Auto-label workers before applying the PostgresCluster
-pg_label_workers: true
+pg_label_workers: false
 
 # Enforce that Postgres instance pods + pgBackRest repoHost schedule only on workers
-pg_workers_only: true
+pg_workers_only: false

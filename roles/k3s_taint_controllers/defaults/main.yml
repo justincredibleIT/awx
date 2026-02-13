@@ -1,0 +1,19 @@
+---
+# Host that will run kubectl commands (typically your first server/controller)
+k3s_taint_runner_host: "{{ groups['k3s_servers'][0] }}"
+
+# Path to kubeconfig on the runner host
+k3s_taint_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# Which nodes are considered controllers/control-plane
+k3s_controller_nodes: "{{ groups['k3s_servers'] }}"
+
+# Optionally remove these taints from worker nodes (usually not needed)
+k3s_taint_remove_from_workers: false
+k3s_worker_nodes: "{{ groups['k3s_agents'] | default([]) }}"
+
+# Taints to enforce on controllers.
+# We apply BOTH keys because different components look for one or the other.
+k3s_controller_taints:
+  - "node-role.kubernetes.io/control-plane=true:NoSchedule"
+  - "node-role.kubernetes.io/master=true:NoSchedule"

@@ -22,11 +22,18 @@
     - role: metallb_install
       vars:
         metallb_ip_range:
-          - 192.168.1.101-192.168.1.101
-          - 192.168.1.102-192.168.1.102
-          - 192.168.1.103-192.168.1.103
-          - 192.168.1.104-192.168.1.104
-          - 192.168.1.105-192.168.1.105
+          - 10.170.16.67-10.170.16.67
+          - 10.170.16.68-10.170.16.68
+          - 10.170.16.69-10.170.16.69
+          - 10.170.16.70-10.170.16.70
+          - 10.170.16.71-10.170.16.71
+
+- name: Taint control-plane nodes (NoSchedule) so workloads stay on workers
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - k3s_taint_controllers
 
 - name: Install Longhorn (run kubectl/helm from first server)
   hosts: k3s_servers[0]
@@ -47,6 +54,7 @@
         pg_instances: 3
         pg_pgdata_size: "50Gi"
         pg_backrest_repo_size: "100Gi"
+        pg_backrest_storage_class: "longhorn-rwo"
         pg_storage_class: "longhorn-ha-any"
 
     - awx_operator_install

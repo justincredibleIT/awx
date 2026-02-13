@@ -1,0 +1,80 @@
+---
+- name: Validate runner host
+  ansible.builtin.assert:
+    that:
+      - k3s_taint_runner_host is defined
+      - k3s_taint_runner_host | length > 0
+    fail_msg: "k3s_taint_runner_host is not set (expected groups['k3s_servers'][0])."
+
+- name: Validate controller nodes list
+  ansible.builtin.assert:
+    that:
+      - k3s_controller_nodes is defined
+      - k3s_controller_nodes | length > 0
+    fail_msg: "k3s_controller_nodes is empty. Expected groups['k3s_servers']."
+
+- name: Assert kubeconfig exists on runner host
+  ansible.builtin.stat:
+    path: "{{ k3s_taint_kubeconfig_path }}"
+  register: k3s_taint_kcfg
+  run_once: true
+  delegate_to: "{{ k3s_taint_runner_host }}"
+
+- name: Fail if kubeconfig missing on runner host
+  ansible.builtin.assert:
+    that:
+      - k3s_taint_kcfg.stat.exists
+    fail_msg: "k3s kubeconfig not found at {{ k3s_taint_kubeconfig_path }} on {{ k3s_taint_runner_host }}."
+  run_once: true
+  delegate_to: "{{ k3s_taint_runner_host }}"
+
+- name: Show current taints on controller nodes (before)
+  ansible.builtin.shell: |
+    set -eu
+    echo "== Controllers =="
+    kubectl --kubeconfig {{ k3s_taint_kubeconfig_path }} get nodes \
+      -o custom-columns=NAME:.metadata.name,TAINTS:'.spec.taints' | \
+      egrep -E '^(NAME|({{ k3s_controller_nodes | join("|") }}))' || true
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ k3s_taint_runner_host }}"
+  changed_when: false
+
+- name: Apply NoSchedule taints to controller nodes
+  ansible.builtin.shell: |
+    set -eu
+    {% for n in k3s_controller_nodes %}
+    {% for t in k3s_controller_taints %}
+    kubectl --kubeconfig {{ k3s_taint_kubeconfig_path }} taint node {{ n }} {{ t }} --overwrite
+    {% endfor %}
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ k3s_taint_runner_host }}"
+
+- name: Optionally remove control-plane taints from workers
+  ansible.builtin.shell: |
+    set -eu
+    {% for n in k3s_worker_nodes %}
+    kubectl --kubeconfig {{ k3s_taint_kubeconfig_path }} taint node {{ n }} node-role.kubernetes.io/control-plane- || true
+    kubectl --kubeconfig {{ k3s_taint_kubeconfig_path }} taint node {{ n }} node-role.kubernetes.io/master- || true
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ k3s_taint_runner_host }}"
+  when: k3s_taint_remove_from_workers | bool
+
+- name: Show current taints on controller nodes (after)
+  ansible.builtin.shell: |
+    set -eu
+    kubectl --kubeconfig {{ k3s_taint_kubeconfig_path }} get nodes \
+      -o custom-columns=NAME:.metadata.name,TAINTS:'.spec.taints' | \
+      egrep -E '^(NAME|({{ k3s_controller_nodes | join("|") }}))' || true
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ k3s_taint_runner_host }}"
+  changed_when: false

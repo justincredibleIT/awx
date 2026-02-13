@@ -43,9 +43,21 @@
   delegate_to: "{{ pg_runner_host }}"
   changed_when: false
 
+- name: Ensure namespace exists
+  ansible.builtin.shell: |
+    set -eu
+    kubectl --kubeconfig {{ pg_kubeconfig_path }} get ns {{ pg_namespace }} >/dev/null 2>&1 || \
+      kubectl --kubeconfig {{ pg_kubeconfig_path }} create ns {{ pg_namespace }}
+  args:
+    executable: /bin/bash
+  run_once: true
+  delegate_to: "{{ pg_runner_host }}"
+  changed_when: false
+
+
 - name: Label worker nodes for Postgres scheduling (node-role=worker)
   ansible.builtin.shell: |
-    set -euo pipefail
+    set -eu
     {% for n in pg_worker_nodes %}
     kubectl --kubeconfig {{ pg_kubeconfig_path }} label node {{ n }} {{ pg_worker_label_key }}={{ pg_worker_label_value }} --overwrite
     {% endfor %}
@@ -78,7 +90,7 @@
 - name: Wait for PostgresCluster to become Ready (instance replicas + repo host)
   when: pg_wait_ready | bool
   ansible.builtin.shell: |
-    set -euo pipefail
+    set -eu
 
     echo "== PostgresCluster status.conditions =="
     kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} \
@@ -123,7 +135,7 @@
 
 - name: Show DB objects
   ansible.builtin.shell: |
-    set -euo pipefail
+    set -eu
     kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} get postgrescluster,pods,pvc,svc -o wide
     echo
     kubectl --kubeconfig {{ pg_kubeconfig_path }} -n {{ pg_namespace }} get secrets | grep -E '{{ pg_cluster_name }}|{{ pg_user_name }}|pguser' || true
