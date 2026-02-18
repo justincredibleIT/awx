@@ -4,52 +4,45 @@
   become: true
   gather_facts: true
   roles:
-    - os_prep
-    - k3s_install
-
-# - name: Fetch kubeconfig to workstation
-#   hosts: k3s_servers[0]
-#   become: false
-#   gather_facts: false
-#   roles:
-#     - k3s_kubeconfig
+    - awx_install_os_prep
+    - awx_install_k3s_install
 
 - name: Install MetalLB (run once from admin server)
   hosts: k3s_servers[0]
   become: true
   gather_facts: false
   roles:
-    - role: metallb_install
+    - role: awx_install_metallb_install
       vars:
         metallb_ip_range:
-          - 10.170.16.67-10.170.16.67
-          - 10.170.16.68-10.170.16.68
-          - 10.170.16.69-10.170.16.69
-          - 10.170.16.70-10.170.16.70
-          - 10.170.16.71-10.170.16.71
+          - 192.168.1.70-192.168.1.70
+          - 192.168.1.71-192.168.1.71
+          - 192.168.1.72-192.168.1.72
+          - 192.168.1.73-192.168.1.73
+          - 192.168.1.74-192.168.1.74
 
 - name: Taint control-plane nodes (NoSchedule) so workloads stay on workers
   hosts: k3s_servers[0]
   become: true
   gather_facts: false
   roles:
-    - k3s_taint_controllers
+    - awx_install_k3s_taint_controllers
 
 - name: Install Longhorn (run kubectl/helm from first server)
   hosts: k3s_servers[0]
   become: true
   gather_facts: false
   roles:
-    - longhorn_install
+    - awx_install_longhorn_install
 
 - name: Install Crunchy Postgres Operator (PGO), apply, and awx_operator
   hosts: k3s_servers[0]
   become: true
   gather_facts: false
   roles:
-    - postgres_operator_install
+    - awx_install_postgres_operator_install
 
-    - role: awxdb_ha_postgrescluster_apply
+    - role: awx_install_awxdb_ha_postgrescluster_apply
       vars:
         pg_instances: 3
         pg_pgdata_size: "50Gi"
@@ -57,9 +50,9 @@
         pg_backrest_storage_class: "longhorn-rwo"
         pg_storage_class: "longhorn-ha-any"
 
-    - awx_operator_install
+    - awx_install_awx_operator_install
 
-    - role: awx_cr_apply
+    - role: awx_install_awx_cr_apply
       vars:
         # Override replicas here
         awx_replicas: 3
@@ -70,4 +63,4 @@
         awx_projects_persistence: false
 #        awx_projects_storage_size: "10Gi"
         awx_projects_storage_class: "longhorn-ha-any"
-    - awx_get_creds
+    - awx_install_awx_get_creds
