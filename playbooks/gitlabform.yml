@@ -11,19 +11,18 @@
 
   tasks:
     - name: Ensure gitlabform is installed
-      pip:
+      ansible.builtin.pip:
         name: gitlabform
         state: present
-        # FIXED: Ensure a space exists after the colon
-        extra_args: "--user"
+        extra_args: --user
 
     - name: Generate config.yml next to playbook
-      template:
+      ansible.builtin.template:
         src: templates/config.yml.j2
         dest: "{{ playbook_dir }}/config.yml"
 
     - name: Verbosity - Inspect generated config
-      shell: |
+      ansible.builtin.shell: |
         echo "Current Directory: $(pwd)"
         echo "Checking for config file..."
         ls -la {{ playbook_dir }}/config.yml
@@ -32,12 +31,11 @@
       register: config_debug
 
     - name: Display Config Verbosity
-      debug:
+      ansible.builtin.debug:
         var: config_debug.stdout_lines
 
     - name: Run GitLabForm
-      # Running directly where the config.yml was just created
-      shell: "gitlabform {{ target_scope }} --verbose"
+      ansible.builtin.shell: "gitlabform {{ target_scope }} --verbose"
       args:
         chdir: "{{ playbook_dir }}"
       environment:
@@ -48,7 +46,7 @@
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Final Output
-      debug:
-        msg: 
+      ansible.builtin.debug:
+        msg:
           - "STDOUT: {{ gitlabform_result.stdout }}"
           - "STDERR: {{ gitlabform_result.stderr }}"
