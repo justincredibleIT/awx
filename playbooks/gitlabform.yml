@@ -1,0 +1,48 @@
+---
+- name: GitLab Configuration as Code
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # API Connection Details
+    gitlab_url: "http://gitlab.homelab.lan"
+    gitlab_token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+    
+    # Target Scope (can be a group path like 'my-org/*' or a specific project)
+    target_scope: "engineering/*"
+
+    # THE NEED-TO-KNOW LIST
+    # Adding or removing a user here changes their access in GitLab
+    temporary_access_list:
+      - { name: "consultant_alpha", role: "developer", expiry: "2026-06-01" }
+      - { name: "security_auditor", role: "reporter",  expiry: "2026-04-30" }
+      - { name: "temporary_dev",    role: "developer", expiry: "2026-05-15" }
+
+  tasks:
+    - name: Ensure local config directory exists
+      file:
+        path: "./gitlabform_temp"
+        state: directory
+
+    - name: Generate GitLabForm Configuration
+      template:
+        src: config.yml.j2
+        dest: "./gitlabform_temp/config.yml"
+
+    - name: Run GitLabForm (Docker Execution)
+      community.docker.docker_container:
+        name: gitlabform_apply
+        image: ghcr.io/gitlabform/gitlabform:latest
+        cleanup: true
+        detach: false
+        volumes:
+          - "{{ playbook_dir }}/gitlabform_temp:/config"
+        env:
+          GITLAB_TOKEN: "{{ gitlab_token }}"
+        command: "gitlabform {{ target_scope }}"
+      register: gitlab_out
+
+    - name: Display GitLabForm Result
+      debug:
+        msg: "{{ gitlab_out.container.Output }}"
