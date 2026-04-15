@@ -15,12 +15,11 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        # Using list syntax to avoid quoting/colon parsing issues
-        extra_args: 
-          - "--user"
+        # FIXED: Pass as a simple string to avoid the previous parsing error
+        extra_args: "--user"
 
     - name: Run GitLabForm with Managed Configuration
-      # Using /tmp ensures visibility regardless of AWX project mount quirks
+      # Writing to /tmp ensures visibility regardless of AWX project mount quirks
       ansible.builtin.shell: |
         cat <<'EOF' > /tmp/gitlab_config.yml
         config_version: 3
