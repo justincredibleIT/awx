@@ -1,5 +1,5 @@
 ---
-- name: GitLab Configuration as Code - Root Execution
+- name: GitLab Configuration as Code - Standard Run
   hosts: localhost
   connection: local
   gather_facts: false
@@ -7,49 +7,26 @@
   vars:
     gitlab_url: "http://gitlab.homelab.lan"
     target_scope: "test-group/test-project"
-    temporary_access_list:
-      - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
   tasks:
     - name: Ensure gitlabform is installed
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        # Space removed after the colon to ensure absolute YAML validity 
-        extra_args: "--user"
+        [cite_start]extra_args: "--user" [cite: 36, 52]
 
-    - name: Generate config.yml next to playbook
+    - name: Generate config.yml in playbook root
       ansible.builtin.template:
         src: templates/config.yml.j2
-        dest: "{{ playbook_dir }}/config.yml"
-
-    - name: Verbosity - Inspect generated config
-      ansible.builtin.shell: |
-        echo "Working Directory: $(pwd)"
-        echo "Playbook Directory: {{ playbook_dir }}"
-        ls -la {{ playbook_dir }}/config.yml
-        cat {{ playbook_dir }}/config.yml
-      register: config_debug
-
-    - name: Display Config Verbosity
-      ansible.builtin.debug:
-        var: config_debug.stdout_lines
+        [cite_start]dest: "{{ playbook_dir }}/config.yml" [cite: 40, 54]
 
     - name: Run GitLabForm
-      # No -c flag; relying on the tool to find config.yml in chdir 
-      ansible.builtin.shell: "gitlabform {{ target_scope }} --verbose"
+      # No '-c' needed; it looks for 'config.yml' in the current dir by default
+      [cite_start]ansible.builtin.shell: "gitlabform {{ target_scope }} --verbose" [cite: 61]
       args:
-        chdir: "{{ playbook_dir }}"
+        [cite_start]chdir: "{{ playbook_dir }}" [cite: 61]
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        # PATH lookup with default to prevent undefined variable errors [cite: 6, 38]
-        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
+        [cite_start]PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}" [cite: 43, 49]
       register: gitlabform_result
-      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
-
-    - name: Final Output
-      ansible.builtin.debug:
-        msg:
-          - "STDOUT: {{ gitlabform_result.stdout }}"
-          - "STDERR: {{ gitlabform_result.stderr }}"
