@@ -15,10 +15,12 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        [cite_start]extra_args: "--user" [cite: 117]
+        # Using list syntax to avoid quoting/colon parsing issues
+        extra_args: 
+          - "--user"
 
     - name: Run GitLabForm with Managed Configuration
-      # We write to a temp file first to ensure visibility and valid shell syntax
+      # Using /tmp ensures visibility regardless of AWX project mount quirks
       ansible.builtin.shell: |
         cat <<'EOF' > /tmp/gitlab_config.yml
         config_version: 3
@@ -37,9 +39,9 @@
         EOF
         gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
       environment:
-        [cite_start]GITLAB_URL: "{{ gitlab_url }}" [cite: 123]
-        [cite_start]GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}" [cite: 123]
-        [cite_start]PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}" [cite: 123]
+        GITLAB_URL: "{{ gitlab_url }}"
+        GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
