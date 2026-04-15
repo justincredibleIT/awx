@@ -1,5 +1,5 @@
 ---
-- name: GitLab Configuration as Code - Root Execution
+- name: GitLab Configuration as Code - Standardized Fix
   hosts: localhost
   connection: local
   gather_facts: false
@@ -15,13 +15,12 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        # Fixed syntax: Ensure a single space follows the colon
-        extra_args: "--user"
+        [cite_start]extra_args: "--user" [cite: 117]
 
-    - name: Run GitLabForm with Inline Config
-      # Using '-c -' tells the tool to read from stdin (the heredoc below)
+    - name: Run GitLabForm with Managed Configuration
+      # We write to a temp file first to ensure visibility and valid shell syntax
       ansible.builtin.shell: |
-        gitlabform -c - {{ target_scope }} --verbose <<EOF
+        cat <<'EOF' > /tmp/gitlab_config.yml
         config_version: 3
         projects_and_groups:
           "{{ target_scope }}":
@@ -36,16 +35,14 @@
                   expires_at: "{{ user.expiry }}"
                 {% endfor %}
         EOF
+        gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
       environment:
-        GITLAB_URL: "{{ gitlab_url }}"
-        GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
+        [cite_start]GITLAB_URL: "{{ gitlab_url }}" [cite: 123]
+        [cite_start]GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}" [cite: 123]
+        [cite_start]PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}" [cite: 123]
       register: gitlabform_result
-      # Marked as changed if the tool actually applied configuration
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
-    - name: Final Output
+    - name: Display GitLab Output
       ansible.builtin.debug:
-        msg:
-          - "STDOUT: {{ gitlabform_result.stdout }}"
-          - "STDERR: {{ gitlabform_result.stderr }}"
+        var: gitlabform_result.stdout_lines
