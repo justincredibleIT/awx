@@ -1,5 +1,5 @@
 ---
-- name: GitLab Configuration as Code - Path Debugging
+- name: GitLab Configuration as Code - Specific Project
   hosts: localhost
   connection: local
   gather_facts: false
@@ -15,39 +15,33 @@
       file:
         path: "{{ playbook_dir }}/gitlabform_temp"
         state: directory
-        mode: '0777' # Temporarily wide open to rule out permission issues
+        [cite_start]mode: '0755' [cite: 14]
+
+    - name: Ensure gitlabform is installed
+      pip:
+        name: gitlabform
+        state: present
+        [cite_start]extra_args: "--user" [cite: 4, 5, 6]
 
     - name: Generate GitLabForm Configuration from Template
       template:
         src: templates/config.yml.j2
-        dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
-
-    - name: Debug Pathing - Let us see the files
-      shell: |
-        echo "Current User: $(whoami)"
-        echo "Current Directory: $(pwd)"
-        echo "Listing gitlabform_temp content:"
-        ls -la {{ playbook_dir }}/gitlabform_temp/
-        cat {{ playbook_dir }}/gitlabform_temp/config.yml
-      register: debug_output
-
-    - name: Show Debug Info
-      debug:
-        var: debug_output.stdout_lines
+        [cite_start]dest: "{{ playbook_dir }}/gitlabform_temp/config.yml" [cite: 15, 17]
 
     - name: Run GitLabForm
-      # Use ONLY the filename 'config.yml' since we are changing directory
-      shell: "gitlabform -c config.yml {{ target_scope }}"
+      # Mirroring the Quick Start: Run it relative to the config file
+      shell: "gitlabform {{ target_scope }}"
       args:
-        # This moves the execution context into the folder where the file lives
-        chdir: "{{ playbook_dir }}/gitlabform_temp"
+        [cite_start]chdir: "{{ playbook_dir }}/gitlabform_temp" [cite: 25]
       environment:
+        GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      # Capture both "Applying" and "Applied" to catch different GitLabForm versions
-      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
+      changed_when: "'Applying' in gitlabform_result.stdout"
 
     - name: Final Output
       debug:
-        var: gitlabform_result.stderr_lines
+        msg: 
+          - "STDOUT: {{ gitlabform_result.stdout }}"
+          - [cite_start]"STDERR: {{ gitlabform_result.stderr }}" [cite: 26]
