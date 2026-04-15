@@ -15,33 +15,36 @@
       pip:
         name: gitlabform
         state: present
-        [cite_start]extra_args: "--user" [cite: 5, 36]
+        # FIXED: Ensure a space exists after the colon
+        extra_args: "--user"
 
     - name: Generate config.yml next to playbook
       template:
         src: templates/config.yml.j2
-        [cite_start]dest: "{{ playbook_dir }}/config.yml" [cite: 14, 39]
+        dest: "{{ playbook_dir }}/config.yml"
 
     - name: Verbosity - Inspect generated config
       shell: |
-        echo "Looking for config in: {{ playbook_dir }}"
+        echo "Current Directory: $(pwd)"
+        echo "Checking for config file..."
         ls -la {{ playbook_dir }}/config.yml
+        echo "File Contents:"
         cat {{ playbook_dir }}/config.yml
-      [cite_start]register: config_debug [cite: 15, 17]
+      register: config_debug
 
     - name: Display Config Verbosity
       debug:
-        [cite_start]var: config_debug.stdout_lines [cite: 19, 20]
+        var: config_debug.stdout_lines
 
     - name: Run GitLabForm
-      # Running directly in the playbook_dir where config.yml now sits
-      [cite_start]shell: "gitlabform {{ target_scope }} --verbose" [cite: 8, 40]
+      # Running directly where the config.yml was just created
+      shell: "gitlabform {{ target_scope }} --verbose"
       args:
-        [cite_start]chdir: "{{ playbook_dir }}" [cite: 9, 41]
+        chdir: "{{ playbook_dir }}"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        [cite_start]PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}" [cite: 1]
+        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
@@ -49,4 +52,4 @@
       debug:
         msg: 
           - "STDOUT: {{ gitlabform_result.stdout }}"
-          - [cite_start]"STDERR: {{ gitlabform_result.stderr }}" [cite: 25]
+          - "STDERR: {{ gitlabform_result.stderr }}"
