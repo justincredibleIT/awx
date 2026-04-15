@@ -1,17 +1,12 @@
 ---
-- name: GitLab Configuration as Code - Specific Project
+- name: GitLab Configuration as Code - Path Debugging
   hosts: localhost
   connection: local
   gather_facts: false
 
   vars:
-    # URL of your specific instance
     gitlab_url: "http://gitlab.homelab.lan"
-    
-    # Target path: group/project
     target_scope: "test-group/test-project"
-
-    # Defining the specific user for Time-Based Access
     temporary_access_list:
       - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
@@ -20,31 +15,34 @@
       file:
         path: "{{ playbook_dir }}/gitlabform_temp"
         state: directory
-
-    - name: Ensure gitlabform is installed
-      pip:
-        name: gitlabform
-        state: present
-        extra_args: "--user"
+        mode: '0777' # Temporarily wide open to rule out permission issues
 
     - name: Generate GitLabForm Configuration from Template
       template:
-        # Use 'templates/' based on your tree layout
         src: templates/config.yml.j2
         dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
+    - name: Debug Pathing - Let us see the files
+      shell: |
+        echo "Current User: $(whoami)"
+        echo "Current Directory: $(pwd)"
+        echo "Listing gitlabform_temp content:"
+        ls -la {{ playbook_dir }}/gitlabform_temp/
+        cat {{ playbook_dir }}/gitlabform_temp/config.yml
+      register: debug_output
+
+    - name: Show Debug Info
+      debug:
+        var: debug_output.stdout_lines
+
     - name: Run GitLabForm
-      # Use the -c flag to point GitLabForm directly to the generated file
       shell: "gitlabform -c {{ playbook_dir }}/gitlabform_temp/config.yml {{ target_scope }}"
       environment:
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        # Injected path to find the 'gitlabform' binary
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
+      ignore_errors: true # So we can see the debug output even if this fails
 
-    - name: Display GitLabForm Output
+    - name: Final Output
       debug:
-        msg: 
-          - "STDOUT: {{ gitlabform_result.stdout }}"
-          - "STDERR: {{ gitlabform_result.stderr }}"
+        var: gitlabform_result.stderr_lines
