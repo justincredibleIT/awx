@@ -1,0 +1,4 @@
+Jinja2>=3.0.0
+gitlabform
+python-gitlab
+docker

@@ -1,0 +1,6 @@
+gcc
+python3-devel
+libxml2-devel
+libxslt-devel
+git-core
+python3-pip

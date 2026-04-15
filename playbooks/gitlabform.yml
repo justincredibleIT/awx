@@ -34,13 +34,14 @@
         dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
     - name: Run GitLabForm
-      # Use python3 -m to ensure the module is found in the local bin path
-      shell: "python3 -m gitlabform {{ target_scope }}"
+      # Call the binary directly instead of using python3 -m
+      shell: "gitlabform {{ target_scope }}"
       args:
         chdir: "{{ playbook_dir }}/gitlabform_temp"
       environment:
-        # This pulls the token injected by your Custom Credential Type
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        # This ensures the local bin path is searched even if the runner env is weird
+        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH }}"
       register: gitlabform_result
       changed_when: "'Applying' in gitlabform_result.stdout"
 
