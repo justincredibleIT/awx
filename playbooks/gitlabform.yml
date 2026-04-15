@@ -15,10 +15,11 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        [cite_start]extra_args: "--user" [cite: 87]
+        # Fixed syntax: Ensure a single space follows the colon
+        extra_args: "--user"
 
     - name: Run GitLabForm with Inline Config
-      # We use a heredoc to feed the config directly into gitlabform via stdin
+      # Using '-c -' tells the tool to read from stdin (the heredoc below)
       ansible.builtin.shell: |
         gitlabform -c - {{ target_scope }} --verbose <<EOF
         config_version: 3
@@ -40,6 +41,7 @@
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
+      # Marked as changed if the tool actually applied configuration
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Final Output
