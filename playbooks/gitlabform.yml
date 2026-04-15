@@ -1,5 +1,5 @@
 ---
-- name: GitLab Configuration as Code - Standard Run
+- name: GitLab Configuration as Code - Root Execution
   hosts: localhost
   connection: local
   gather_facts: false
@@ -13,20 +13,28 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        [cite_start]extra_args: "--user" [cite: 36, 52]
+        # Space after colon is critical [cite: 30, 46]
+        extra_args: "--user"
 
-    - name: Generate config.yml in playbook root
+    - name: Generate config.yml next to playbook
       ansible.builtin.template:
         src: templates/config.yml.j2
-        [cite_start]dest: "{{ playbook_dir }}/config.yml" [cite: 40, 54]
+        dest: "{{ playbook_dir }}/config.yml"
 
     - name: Run GitLabForm
-      # No '-c' needed; it looks for 'config.yml' in the current dir by default
-      [cite_start]ansible.builtin.shell: "gitlabform {{ target_scope }} --verbose" [cite: 61]
+      # Running without -c relies on config.yml being in the current directory [cite: 61]
+      ansible.builtin.shell: "gitlabform {{ target_scope }} --verbose"
       args:
-        [cite_start]chdir: "{{ playbook_dir }}" [cite: 61]
+        chdir: "{{ playbook_dir }}"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        [cite_start]PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}" [cite: 43, 49]
+        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
+      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
+
+    - name: Final Output
+      ansible.builtin.debug:
+        msg:
+          - "STDOUT: {{ gitlabform_result.stdout }}"
+          - "STDERR: {{ gitlabform_result.stderr }}"
