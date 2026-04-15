@@ -1,26 +1,23 @@
 ---
-- name: GitLab Configuration as Code
+- name: GitLab Configuration as Code - Specific Project
   hosts: localhost
   connection: local
   gather_facts: false
 
   vars:
-    # API Connection Details
+    # URL of your specific instance
     gitlab_url: "http://gitlab.homelab.lan"
     gitlab_token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
     
-    # Target Scope (can be a group path like 'my-org/*' or a specific project)
-    target_scope: "engineering/*"
+    # Targeting ONLY the test project
+    target_scope: "test-group/test-project"
 
-    # THE NEED-TO-KNOW LIST
-    # Adding or removing a user here changes their access in GitLab
+    # Defining the specific user
     temporary_access_list:
-      - { name: "consultant_alpha", role: "developer", expiry: "2026-06-01" }
-      - { name: "security_auditor", role: "reporter",  expiry: "2026-04-30" }
-      - { name: "temporary_dev",    role: "developer", expiry: "2026-05-15" }
+      - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
   tasks:
-    - name: Ensure local config directory exists
+    - name: Create temp directory for config
       file:
         path: "./gitlabform_temp"
         state: directory
@@ -30,7 +27,7 @@
         src: config.yml.j2
         dest: "./gitlabform_temp/config.yml"
 
-    - name: Run GitLabForm (Docker Execution)
+    - name: Run GitLabForm
       community.docker.docker_container:
         name: gitlabform_apply
         image: ghcr.io/gitlabform/gitlabform:latest
@@ -40,9 +37,10 @@
           - "{{ playbook_dir }}/gitlabform_temp:/config"
         env:
           GITLAB_TOKEN: "{{ gitlab_token }}"
+          # Since it's a .lan address, ensure the container can resolve it
         command: "gitlabform {{ target_scope }}"
-      register: gitlab_out
+      register: result
 
-    - name: Display GitLabForm Result
+    - name: Result Output
       debug:
-        msg: "{{ gitlab_out.container.Output }}"
+        msg: "{{ result.container.Output }}"
