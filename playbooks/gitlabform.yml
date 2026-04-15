@@ -17,7 +17,7 @@
         state: present
         extra_args: "--user"
 
-    - name: Run GitLabForm with Managed Configuration
+    - name: Generate GitLabForm Configuration File
       ansible.builtin.shell: |
         cat <<EOF > /tmp/gitlab_config.yml
         config_version: 3
@@ -34,7 +34,9 @@
                   expires_at: "{{ user.expiry }}"
                 {% endfor %}
         EOF
-        gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
+
+    - name: Run GitLabForm
+      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
