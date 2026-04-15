@@ -5,8 +5,13 @@
   gather_facts: false
 
   vars:
+    # URL of your specific instance
     gitlab_url: "http://gitlab.homelab.lan"
+    
+    # Target path: group/project
     target_scope: "test-group/test-project"
+
+    # Defining the specific user for Time-Based Access
     temporary_access_list:
       - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
@@ -15,13 +20,13 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        # FIXED: Pass as a simple string to avoid the previous parsing error
+        # Space after colon is critical for YAML parsing [cite: 106, 133]
         extra_args: "--user"
 
     - name: Run GitLabForm with Managed Configuration
-      # Writing to /tmp ensures visibility regardless of AWX project mount quirks
+      # Writing to /tmp ensures visibility regardless of AWX project mount quirks [cite: 165]
       ansible.builtin.shell: |
-        cat <<'EOF' > /tmp/gitlab_config.yml
+        cat <<EOF > /tmp/gitlab_config.yml
         config_version: 3
         projects_and_groups:
           "{{ target_scope }}":
@@ -36,12 +41,15 @@
                   expires_at: "{{ user.expiry }}"
                 {% endfor %}
         EOF
+        # Execution starts only after EOF is correctly closed [cite: 127]
         gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        # Injected path to find the 'gitlabform' binary [cite: 123, 164]
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
+      # Marked as changed if the tool applied configuration [cite: 125, 165]
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Display GitLab Output
