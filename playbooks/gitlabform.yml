@@ -7,40 +7,41 @@
   vars:
     # URL of your specific instance
     gitlab_url: "http://gitlab.homelab.lan"
-    gitlab_token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
     
-    # Targeting ONLY the test project
+    # Target path: group/project
     target_scope: "test-group/test-project"
 
-    # Defining the specific user
+    # Defining the specific user for Time-Based Access
+    # Note: 'admin' is added in the J2 template to prevent lockout
     temporary_access_list:
       - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
   tasks:
     - name: Create temp directory for config
       file:
-        path: "./gitlabform_temp"
+        path: "{{ playbook_dir }}/gitlabform_temp"
         state: directory
 
-    - name: Generate GitLabForm Configuration
+    - name: Ensure gitlabform is installed
+      pip:
+        name: gitlabform
+        state: present
+
+    - name: Generate GitLabForm Configuration from Template
       template:
         src: config.yml.j2
-        dest: "./gitlabform_temp/config.yml"
+        dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
     - name: Run GitLabForm
-      community.docker.docker_container:
-        name: gitlabform_apply
-        image: ghcr.io/gitlabform/gitlabform:latest
-        cleanup: true
-        detach: false
-        volumes:
-          - "{{ playbook_dir }}/gitlabform_temp:/config"
-        env:
-          GITLAB_TOKEN: "{{ gitlab_token }}"
-          # Since it's a .lan address, ensure the container can resolve it
-        command: "gitlabform {{ target_scope }}"
-      register: result
+      shell: "gitlabform {{ target_scope }}"
+      args:
+        chdir: "{{ playbook_dir }}/gitlabform_temp"
+      environment:
+        # This pulls the token injected by your Custom Credential Type
+        GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+      register: gitlabform_result
+      changed_when: "'Applying' in gitlabform_result.stdout"
 
-    - name: Result Output
+    - name: Display GitLabForm Output
       debug:
-        msg: "{{ result.container.Output }}"
+        var: gitlabform_result.stdout_lines
