@@ -5,8 +5,13 @@
   gather_facts: false
 
   vars:
+    # URL of your specific instance
     gitlab_url: "http://gitlab.homelab.lan"
+    
+    # Target path: group/project
     target_scope: "test-group/test-project"
+
+    # Defining the specific user for Time-Based Access
     temporary_access_list:
       - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
@@ -24,18 +29,19 @@
 
     - name: Generate GitLabForm Configuration from Template
       template:
-        # Use 'templates/' prefix as per your tree layout
+        # Use 'templates/' based on your tree layout
         src: templates/config.yml.j2
         dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
     - name: Run GitLabForm
-      shell: "gitlabform --config {{ playbook_dir }}/gitlabform_temp/config.yml {{ target_scope }}"
-      # We no longer rely purely on chdir; we point directly to the file
+      # Use the -c flag to point GitLabForm directly to the generated file
+      shell: "gitlabform -c {{ playbook_dir }}/gitlabform_temp/config.yml {{ target_scope }}"
       environment:
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        # Injected path to find the 'gitlabform' binary
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      changed_when: "'Applying' in gitlabform_result.stdout"
+      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Display GitLabForm Output
       debug:
