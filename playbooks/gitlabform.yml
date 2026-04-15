@@ -26,6 +26,7 @@
       pip:
         name: gitlabform
         state: present
+        extra_args: "--user"
 
     - name: Generate GitLabForm Configuration from Template
       template:
@@ -33,7 +34,8 @@
         dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
     - name: Run GitLabForm
-      shell: "gitlabform {{ target_scope }}"
+      # Use python3 -m to ensure the module is found in the local bin path
+      shell: "python3 -m gitlabform {{ target_scope }}"
       args:
         chdir: "{{ playbook_dir }}/gitlabform_temp"
       environment:
