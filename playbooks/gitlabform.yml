@@ -1,7 +1,6 @@
 ---
 - name: GitLab Configuration as Code - Root Execution
-  hosts: localhost
-  connection: local
+  hosts: all
   gather_facts: false
 
   vars:
