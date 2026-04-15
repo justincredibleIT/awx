@@ -5,13 +5,8 @@
   gather_facts: false
 
   vars:
-    # URL of your specific instance
     gitlab_url: "http://gitlab.homelab.lan"
-    
-    # Target path: group/project
     target_scope: "test-group/test-project"
-
-    # Restoring the missing variable for the J2 template
     temporary_access_list:
       - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
@@ -28,10 +23,8 @@
         dest: "{{ playbook_dir }}/config.yml"
 
     - name: Run GitLabForm
-      # Running relative to playbook_dir where config.yml now lives
-      ansible.builtin.shell: "gitlabform {{ target_scope }} --verbose"
-      args:
-        chdir: "{{ playbook_dir }}"
+      # Explicitly pointing to the file using the -c flag and absolute path
+      ansible.builtin.shell: "gitlabform -c {{ playbook_dir }}/config.yml {{ target_scope }} --verbose"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
