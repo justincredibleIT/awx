@@ -15,33 +15,33 @@
       file:
         path: "{{ playbook_dir }}/gitlabform_temp"
         state: directory
-        [cite_start]mode: '0755' [cite: 14]
+        mode: "0755"  # Ensure there is a space after the colon
 
     - name: Ensure gitlabform is installed
       pip:
         name: gitlabform
         state: present
-        [cite_start]extra_args: "--user" [cite: 4, 5, 6]
+        extra_args: "--user"
 
     - name: Generate GitLabForm Configuration from Template
       template:
         src: templates/config.yml.j2
-        [cite_start]dest: "{{ playbook_dir }}/gitlabform_temp/config.yml" [cite: 15, 17]
+        dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
     - name: Run GitLabForm
-      # Mirroring the Quick Start: Run it relative to the config file
       shell: "gitlabform {{ target_scope }}"
       args:
-        [cite_start]chdir: "{{ playbook_dir }}/gitlabform_temp" [cite: 25]
+        chdir: "{{ playbook_dir }}/gitlabform_temp"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      changed_when: "'Applying' in gitlabform_result.stdout"
+      # Use the quoting style recommended by the error message
+      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Final Output
       debug:
         msg: 
           - "STDOUT: {{ gitlabform_result.stdout }}"
-          - [cite_start]"STDERR: {{ gitlabform_result.stderr }}" [cite: 26]
+          - "STDERR: {{ gitlabform_result.stderr }}"

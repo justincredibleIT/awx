@@ -1,23 +1,11 @@
 config_version: 3
-
-gitlab:
-  url: "{{ gitlab_url }}"
-
 projects_and_groups:
   "{{ target_scope }}":
-    group_settings:
-      visibility: private
-
     members:
-      # If true, users NOT in this list will be REMOVED from the group/project
       enforce_members: true
-      
       users:
-        # Static Admin Access
         admin_user_account:
           access_level: owner
-
-        # Time-based Dynamic Access
         {% for user in temporary_access_list %}
         {{ user.name }}:
           access_level: {{ user.role }}
