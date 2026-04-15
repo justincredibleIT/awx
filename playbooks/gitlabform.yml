@@ -15,7 +15,7 @@
       file:
         path: "{{ playbook_dir }}/gitlabform_temp"
         state: directory
-        mode: "0755"  # Ensure there is a space after the colon
+        mode: "0755"
 
     - name: Ensure gitlabform is installed
       pip:
@@ -29,15 +29,13 @@
         dest: "{{ playbook_dir }}/gitlabform_temp/config.yml"
 
     - name: Run GitLabForm
-      shell: "gitlabform {{ target_scope }}"
-      args:
-        chdir: "{{ playbook_dir }}/gitlabform_temp"
+      # Use the -c flag with the full absolute path
+      shell: "gitlabform -c {{ playbook_dir }}/gitlabform_temp/config.yml {{ target_scope }}"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      # Use the quoting style recommended by the error message
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Final Output
