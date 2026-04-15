@@ -36,12 +36,17 @@
         var: debug_output.stdout_lines
 
     - name: Run GitLabForm
-      shell: "gitlabform -c {{ playbook_dir }}/gitlabform_temp/config.yml {{ target_scope }}"
+      # Use ONLY the filename 'config.yml' since we are changing directory
+      shell: "gitlabform -c config.yml {{ target_scope }}"
+      args:
+        # This moves the execution context into the folder where the file lives
+        chdir: "{{ playbook_dir }}/gitlabform_temp"
       environment:
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      ignore_errors: true # So we can see the debug output even if this fails
+      # Capture both "Applying" and "Applied" to catch different GitLabForm versions
+      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Final Output
       debug:
