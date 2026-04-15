@@ -5,13 +5,8 @@
   gather_facts: false
 
   vars:
-    # URL of your specific instance [cite: 71]
     gitlab_url: "http://gitlab.homelab.lan"
-    
-    # Target path: group/project [cite: 71]
     target_scope: "test-group/test-project"
-
-    # Defining the specific user for Time-Based Access [cite: 71]
     temporary_access_list:
       - { name: "test-user", role: "developer", expiry: "2026-12-31" }
 
@@ -20,11 +15,10 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        # Space after colon is critical for YAML parsing [cite: 117, 158]
         extra_args: "--user"
 
     - name: Run GitLabForm with Managed Configuration
-      # The EOF below MUST be flush-left to satisfy the shell parser 
+      # The EOF below MUST be flush-left in your editor to satisfy the shell
       ansible.builtin.shell: |
         cat <<EOF > /tmp/gitlab_config.yml
         config_version: 3
@@ -41,16 +35,12 @@
                   expires_at: "{{ user.expiry }}"
                 {% endfor %}
         EOF
-        # Execution starts only after the heredoc is correctly closed [cite: 165]
         gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
-        # Token lookup from environment variable [cite: 123, 184]
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        # PATH lookup to find the local pip binary [cite: 123, 184]
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      # Marked as changed if the tool actually applied configuration [cite: 124]
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Display GitLab Output
