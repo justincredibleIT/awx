@@ -15,11 +15,10 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        # Simplified string to avoid the YAML parser error at col 21
-        extra_args: --user
+        [cite_start]extra_args: "--user" [cite: 211, 212]
 
     - name: Run GitLabForm with Managed Configuration
-      # The EOF below MUST be flush-left in your editor to satisfy the shell
+      # The EOF below MUST be flush against the left margin (column 1)
       ansible.builtin.shell: |
         cat <<EOF > /tmp/gitlab_config.yml
         config_version: 3
@@ -36,14 +35,15 @@
                   expires_at: "{{ user.expiry }}"
                 {% endfor %}
         EOF
+        # Execution starts only after the heredoc is correctly closed
         gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
+        [cite_start]PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}" [cite: 218]
       register: gitlabform_result
       changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
     - name: Display GitLab Output
       ansible.builtin.debug:
-        var: gitlabform_result.stdout_lines
+        [cite_start]var: gitlabform_result.stdout_lines [cite: 223]
