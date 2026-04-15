@@ -15,10 +15,10 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        extra_args: "--user"
+        [cite_start]extra_args: "--user" [cite: 186]
 
     - name: Run GitLabForm with Managed Configuration
-      # The EOF below MUST be flush-left in your editor to satisfy the shell
+      # CRITICAL: The EOF below MUST be flush against the left margin
       ansible.builtin.shell: |
         cat <<EOF > /tmp/gitlab_config.yml
         config_version: 3
@@ -35,6 +35,7 @@
                   expires_at: "{{ user.expiry }}"
                 {% endfor %}
         EOF
+        # Execution starts only after the file is correctly closed
         gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
