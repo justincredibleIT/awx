@@ -15,16 +15,26 @@
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        extra_args: "--user"
+        [cite_start]extra_args: "--user" [cite: 87]
 
-    - name: Generate config.yml next to playbook
-      ansible.builtin.template:
-        src: templates/config.yml.j2
-        dest: "{{ playbook_dir }}/config.yml"
-
-    - name: Run GitLabForm
-      # Explicitly pointing to the file using the -c flag and absolute path
-      ansible.builtin.shell: "gitlabform -c {{ playbook_dir }}/config.yml {{ target_scope }} --verbose"
+    - name: Run GitLabForm with Inline Config
+      # We use a heredoc to feed the config directly into gitlabform via stdin
+      ansible.builtin.shell: |
+        gitlabform -c - {{ target_scope }} --verbose <<EOF
+        config_version: 3
+        projects_and_groups:
+          "{{ target_scope }}":
+            members:
+              enforce_members: true
+              users:
+                admin_user_account:
+                  access_level: owner
+                {% for user in temporary_access_list %}
+                {{ user.name }}:
+                  access_level: {{ user.role }}
+                  expires_at: "{{ user.expiry }}"
+                {% endfor %}
+        EOF
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
