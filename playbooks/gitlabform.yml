@@ -30,6 +30,14 @@
                 enforce: true
                 keep_bots: true
 
+    - name: Cat Configuration for Verification
+      ansible.builtin.command: cat /tmp/gitlab_config.yml
+      register: cat_output
+
+    - name: Show Config
+      ansible.builtin.debug:
+        var: cat_output.stdout_lines
+
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -v {{ target_scope }}"
       environment:
