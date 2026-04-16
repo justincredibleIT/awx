@@ -18,6 +18,7 @@
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+            api_version: 4
 
           projects_and_groups:
             "{{ target_scope }}":
