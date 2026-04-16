@@ -14,6 +14,7 @@
         dest: /tmp/gitlab_config.yml
         content: |
           config_version: 4
+          api_version: 4
 
           gitlab:
             url: "{{ gitlab_url }}"
