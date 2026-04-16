@@ -22,21 +22,22 @@
           config_version: 3
           gitlab:
             url: "{{ gitlab_url }}"
+            token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
           projects_and_groups:
             "{{ target_scope }}":
               deploy_keys:
                 ansible_managed_key:
-                  key: "{{ lookup('env', 'SSH_PUBLIC_KEY') }}"
+                  key: "{{ lookup('env', 'SSH_PUBLIC_KEY') | default('MISSING_KEY_CHECK_AWX_CREDENTIAL', true) }}"
                   title: "AWX Managed Deploy Key"
                   can_push: false
 
     - name: Debug Verify Config File
-      ansible.builtin.shell: "ls -l /tmp/gitlab_config.yml && cat /tmp/gitlab_config.yml"
+      ansible.builtin.shell: "cat /tmp/gitlab_config.yml"
       register: debug_config
 
     - name: Show Config Debug Info
       ansible.builtin.debug:
-        var: debug_config.stdout_lines
+        msg: "{{ debug_config.stdout_lines }}"
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose"
