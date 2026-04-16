@@ -35,7 +35,9 @@
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        # CRITICAL: These bypass the SSL verification error seen in job_134
+        # This is the specific variable GitLabForm uses for its initial connection check
+        GITLABFORM_SSL_VERIFY: "false"
+        # Keep these as extra backup for the underlying Python libraries
         PYTHONHTTPSVERIFY: "0"
         REQUESTS_CA_BUNDLE: ""
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
