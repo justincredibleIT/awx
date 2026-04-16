@@ -9,12 +9,6 @@
     target_scope: "test-group/test-project"
 
   tasks:
-    - name: Ensure gitlabform is installed
-      ansible.builtin.pip:
-        name: gitlabform
-        state: present
-        extra_args: "--user"
-
     - name: Generate GitLabForm Configuration File
       ansible.builtin.copy:
         dest: /tmp/gitlab_config.yml
@@ -33,21 +27,16 @@
                     expires_at: "2026-04-17"
                 enforce: true
                 keep_bots: true
-              deploy_keys:
-                ansible_managed_key:
-                  key: "{{ lookup('env', 'SSH_PUBLIC_KEY') }}"
-                  title: "AWX Managed Deploy Key"
-                  can_push: false
 
-    - name: Run GitLabForm
-      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose"
+    - name: Run GitLabForm with Debug
+      # Added --debug and removed {{ target_scope }} from the end to see if it picks up from config
+      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml --debug --verbose"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
-      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
 
-    - name: Display GitLab Output
+    - name: Display Detailed Debug Output
       ansible.builtin.debug:
-        var: gitlabform_result.stdout_lines
+        var: gitlabform_result.stderr_lines
