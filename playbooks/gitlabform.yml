@@ -5,7 +5,8 @@
   gather_facts: false
 
   vars:
-    gitlab_url: "https://gitlab.homelab.lan/"
+    # Switched back to HTTP to avoid self-signed certificate issues
+    gitlab_url: "http://gitlab.homelab.lan/"
     target_scope: "test-group/test-project"
 
   tasks:
@@ -18,7 +19,6 @@
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-            ssl_verify: false
 
           projects_and_groups:
             "{{ target_scope }}":
@@ -35,11 +35,8 @@
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        PYTHONHTTPSVERIFY: "0"
-        CURL_CA_BUNDLE: ""
-        REQUESTS_CA_BUNDLE: ""
-        GITLABFORM_SSL_VERIFY: "false"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
+      register: gitlabform_result
 
     - name: Display GitLab Output
       ansible.builtin.debug:
