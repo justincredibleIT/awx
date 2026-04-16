@@ -20,7 +20,8 @@
         dest: /tmp/gitlab_config.yml
         content: |
           config_version: 3
-
+          gitlab:
+            url: "{{ gitlab_url }}"
           projects_and_groups:
             "{{ target_scope }}":
               deploy_keys:
@@ -28,6 +29,14 @@
                   key: "{{ lookup('env', 'SSH_PUBLIC_KEY') }}"
                   title: "AWX Managed Deploy Key"
                   can_push: false
+
+    - name: Debug Verify Config File
+      ansible.builtin.shell: "ls -l /tmp/gitlab_config.yml && cat /tmp/gitlab_config.yml"
+      register: debug_config
+
+    - name: Show Config Debug Info
+      ansible.builtin.debug:
+        var: debug_config.stdout_lines
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose"
