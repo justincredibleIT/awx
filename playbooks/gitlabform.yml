@@ -35,12 +35,10 @@
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        # This is the specific variable GitLabForm uses for its initial connection check
-        GITLABFORM_SSL_VERIFY: "false"
-        # Keep these as extra backup for the underlying Python libraries
+        # CRITICAL: This bypasses the error seen in job 140
         PYTHONHTTPSVERIFY: "0"
+        GITLABFORM_SSL_VERIFY: "false"
         REQUESTS_CA_BUNDLE: ""
-        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
 
     - name: Display GitLab Output
