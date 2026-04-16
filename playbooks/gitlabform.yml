@@ -23,21 +23,14 @@
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+            api_version: 4
           projects_and_groups:
             "{{ target_scope }}":
               deploy_keys:
                 ansible_managed_key:
-                  key: "{{ lookup('env', 'SSH_PUBLIC_KEY') | default('MISSING_KEY_CHECK_AWX_CREDENTIAL', true) }}"
+                  key: "{{ lookup('env', 'SSH_PUBLIC_KEY') }}"
                   title: "AWX Managed Deploy Key"
                   can_push: false
-
-    - name: Debug Verify Config File
-      ansible.builtin.shell: "cat /tmp/gitlab_config.yml"
-      register: debug_config
-
-    - name: Show Config Debug Info
-      ansible.builtin.debug:
-        msg: "{{ debug_config.stdout_lines }}"
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose"
@@ -45,9 +38,3 @@
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
-      register: gitlabform_result
-      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
-
-    - name: Display GitLab Output
-      ansible.builtin.debug:
-        var: gitlabform_result.stdout_lines
