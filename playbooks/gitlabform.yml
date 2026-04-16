@@ -5,7 +5,7 @@
   gather_facts: false
 
   vars:
-    gitlab_url: "http://gitlab.homelab.lan"
+    gitlab_url: "https://gitlab.homelab.lan/"
     target_scope: "test-group/test-project"
 
   tasks:
@@ -13,30 +13,32 @@
       ansible.builtin.copy:
         dest: /tmp/gitlab_config.yml
         content: |
-          config_version: 3
+          config_version: 4
+
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-            api_version: 4
+            ssl_verify: false
+
           projects_and_groups:
             "{{ target_scope }}":
               members:
                 users:
                   test-user:
                     access_level: Developer
-                    expires_at: "2026-04-17"
+                    expires_at: 2026-04-17
                 enforce: true
                 keep_bots: true
 
-    - name: Run GitLabForm with Debug
-      # Use -d for debug and ensure the target project is at the end
-      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -d {{ target_scope }}"
+    - name: Run GitLabForm
+      # We use -v to see the 'Applying' or 'No change' status clearly
+      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} -v"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
 
-    - name: Display Detailed Debug Output
+    - name: Display GitLab Output
       ansible.builtin.debug:
-        msg: "{{ gitlabform_result.stderr_lines }}"
+        var: gitlabform_result.stderr_lines
