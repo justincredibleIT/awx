@@ -40,11 +40,11 @@
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -v {{ target_scope }}"
-      # environment:
-      #   GITLAB_URL: "{{ gitlab_url }}"
-      #   GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-      #   PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
-      # register: gitlabform_result
+      environment:
+        GITLAB_URL: "{{ gitlab_url }}"
+        GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
+      register: gitlabform_result
 
     - name: Display GitLab Output
       ansible.builtin.debug:
