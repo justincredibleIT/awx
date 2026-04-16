@@ -26,6 +26,13 @@
             api_version: 4
           projects_and_groups:
             "{{ target_scope }}":
+              members:
+                users:
+                  test-user:
+                    access_level: Developer
+                    expires_at: "2026-04-17"
+                enforce: true
+                keep_bots: true
               deploy_keys:
                 ansible_managed_key:
                   key: "{{ lookup('env', 'SSH_PUBLIC_KEY') }}"
@@ -38,3 +45,9 @@
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
+      register: gitlabform_result
+      changed_when: "'Applying' in gitlabform_result.stdout or 'Applied' in gitlabform_result.stdout"
+
+    - name: Display GitLab Output
+      ansible.builtin.debug:
+        var: gitlabform_result.stdout_lines
