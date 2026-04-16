@@ -29,8 +29,8 @@
                 keep_bots: true
 
     - name: Run GitLabForm with Debug
-      # Added --debug and removed {{ target_scope }} from the end to see if it picks up from config
-      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml --debug --verbose"
+      # Use -d for debug and ensure the target project is at the end
+      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -d {{ target_scope }}"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
@@ -39,4 +39,4 @@
 
     - name: Display Detailed Debug Output
       ansible.builtin.debug:
-        var: gitlabform_result.stderr_lines
+        msg: "{{ gitlabform_result.stderr_lines }}"
