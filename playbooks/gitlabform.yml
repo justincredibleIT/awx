@@ -25,16 +25,11 @@
                 users:
                   testuser:
                     access_level: Maintainer
-                    expires_at: "2026-04-19"
+                    expires_at: 2026-04-19
                 enforce: true
+                keep_bots: true
 
-    - name: Cat GitLabForm Configuration File
-      ansible.builtin.command: cat /tmp/gitlab_config.yml
-      register: config_content
-
-    - name: Display Config Content
-      ansible.builtin.debug:
-        var: config_content.stdout_lines
+# expires_at must have no quotations
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -v {{ target_scope }}"
