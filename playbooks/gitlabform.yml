@@ -6,34 +6,38 @@
 
   vars:
     gitlab_url: "http://gitlab.homelab.lan"
-    target_scope: "test-group/test-project"
+    target_scope: "Internal/glftest1"
     temporary_access_list:
-      - { name: "test-user", role: "developer", expiry: "2026-12-31" }
+      - { name: test-user, role: Developer, expiry: "2026-04-17" }
 
   tasks:
     - name: Ensure gitlabform is installed
       ansible.builtin.pip:
         name: gitlabform
         state: present
-        extra_args: "--user"
+        extra_args: --user
 
-    - name: Generate GitLabForm Configuration File
-      ansible.builtin.shell: |
-        cat <<EOF > /tmp/gitlab_config.yml
-        config_version: 3
-        projects_and_groups:
-          "{{ target_scope }}":
-            members:
-              enforce_members: true
-              users:
-                admin_user_account:
-                  access_level: owner
-                {% for user in temporary_access_list %}
-                {{ user.name }}:
-                  access_level: {{ user.role }}
-                  expires_at: "{{ user.expiry }}"
-                {% endfor %}
-        EOF
+    - name: Generate config.yml from inline template
+      ansible.builtin.copy:
+        dest: /tmp/gitlab_config.yml
+        content: |
+          config_version: 4
+
+          gitlab:
+            url: "{{ gitlab_url }}"
+            ssl_verify: false
+
+          projects_and_groups:
+            "{{ target_scope }}":
+              members:
+                users:
+                  {% for user in temporary_access_list %}
+                  {{ user.name }}:
+                    access_level: {{ user.role }}
+                    expires_at: {{ user.expiry }}
+                  {% endfor %}
+                enforce: true
+                keep_bots: true
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} --verbose"
