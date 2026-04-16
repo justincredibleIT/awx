@@ -35,11 +35,11 @@
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        # CRITICAL: This bypasses the error seen in job 140
         PYTHONHTTPSVERIFY: "0"
-        GITLABFORM_SSL_VERIFY: "false"
+        CURL_CA_BUNDLE: ""
         REQUESTS_CA_BUNDLE: ""
-      register: gitlabform_result
+        GITLABFORM_SSL_VERIFY: "false"
+        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
 
     - name: Display GitLab Output
       ansible.builtin.debug:
