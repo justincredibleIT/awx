@@ -13,7 +13,7 @@
       ansible.builtin.copy:
         dest: /tmp/gitlab_config.yml
         content: |
-          config_version: 3
+          config_version: 4
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
