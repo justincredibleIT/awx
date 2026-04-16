@@ -1,4 +1,4 @@
-ARG EE_BASE_IMAGE="quay.io/ansible/awx-ee:latest"
+ARG EE_BASE_IMAGE="registry.access.redhat.com/ubi9/python-312:latest"
 ARG PYCMD="/usr/bin/python3"
 ARG PKGMGR_PRESERVE_CACHE=""
 ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS=""
@@ -54,6 +54,9 @@ ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
 RUN $PYCMD -m pip install --no-cache-dir bindep pyyaml packaging
+RUN dnf install -y python3-pip
+RUN python3 -m pip install --upgrade pip
+RUN python3 -m pip install gitlabform
 
 COPY --from=galaxy /usr/share/ansible /usr/share/ansible
 

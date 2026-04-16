@@ -2,7 +2,7 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/awx-ee:latest
+    name: registry.access.redhat.com/ubi9/python-312:latest
 
 dependencies:
   ansible_core:
@@ -12,19 +12,17 @@ dependencies:
   galaxy:
     collections:
       - name: community.general
-      - name: community.docker
   python:
-    - Jinja2>=3.0.0    # <--- Add this to satisfy Ansible's requirement
-    - gitlabform>=5.3.0
+    - gitlabform
     - python-gitlab
-    - docker
   system:
-    - gcc
-    - python3-devel
-    - libxml2-devel
-    - libxslt-devel
     - git-core
+    - gcc
     - python3-pip
 
-options:
-  package_manager_path: /usr/bin/dnf
+additional_build_steps:
+  prepend_builder:
+    # This stage is where the 'assemble' script actually runs
+    - RUN dnf install -y python3-pip
+    - RUN python3 -m pip install --upgrade pip
+    - RUN python3 -m pip install gitlabform

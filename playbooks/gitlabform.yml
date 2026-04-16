@@ -9,14 +9,6 @@
     target_scope: "test-group/test-project"
 
   tasks:
-    - name: Check GitLabForm Version
-      ansible.builtin.shell: "gitlabform --version"
-      register: version_output
-
-    - name: Display GitLabForm Version
-      ansible.builtin.debug:
-        msg: "Current GitLabForm version is: {{ version_output.stdout }}"
-
     - name: Generate GitLabForm Configuration File
       ansible.builtin.copy:
         dest: /tmp/gitlab_config.yml
@@ -26,6 +18,7 @@
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+            # MANDATORY: This old version requires this flag
             api_version: 4
 
           projects_and_groups:
@@ -34,6 +27,7 @@
                 users:
                   testuser:
                     access_level: Maintainer
+                    # Unquoted date to avoid strftime errors
                     expires_at: 2026-04-19
                 enforce: true
                 keep_bots: true
@@ -43,7 +37,6 @@
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-        PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
 
     - name: Display GitLab Output
