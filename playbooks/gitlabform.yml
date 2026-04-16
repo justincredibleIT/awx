@@ -9,6 +9,14 @@
     target_scope: "test-group/test-project"
 
   tasks:
+    - name: Check GitLabForm Version
+      ansible.builtin.shell: "gitlabform --version"
+      register: version_output
+
+    - name: Display GitLabForm Version
+      ansible.builtin.debug:
+        msg: "Current GitLabForm version is: {{ version_output.stdout }}"
+
     - name: Generate GitLabForm Configuration File
       ansible.builtin.copy:
         dest: /tmp/gitlab_config.yml
@@ -18,6 +26,7 @@
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+            api_version: 4
 
           projects_and_groups:
             "{{ target_scope }}":
@@ -28,14 +37,6 @@
                     expires_at: 2026-04-19
                 enforce: true
                 keep_bots: true
-
-    - name: Cat Configuration for Verification
-      ansible.builtin.command: cat /tmp/gitlab_config.yml
-      register: cat_output
-
-    - name: Show Config
-      ansible.builtin.debug:
-        var: cat_output.stdout_lines
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -v {{ target_scope }}"
