@@ -5,6 +5,7 @@
   gather_facts: false
 
   vars:
+    # Ensure the URL matches your new HTTPS requirement
     gitlab_url: "https://gitlab.homelab.lan/"
     target_scope: "test-group/test-project"
 
@@ -31,11 +32,13 @@
                 keep_bots: true
 
     - name: Run GitLabForm
-      # We use -v to see the 'Applying' or 'No change' status clearly
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} -v"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        # This forces the Python requests library to skip SSL verification
+        PYTHONHTTPSVERIFY: "0"
+        GIT_SSL_NO_VERIFY: "true"
         PATH: "/runner/.local/bin:/usr/local/bin:/usr/bin:{{ ansible_env.PATH | default('') }}"
       register: gitlabform_result
 
