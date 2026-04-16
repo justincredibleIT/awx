@@ -30,7 +30,7 @@
                 keep_bots: true
 
     - name: Run GitLabForm
-      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml {{ target_scope }} -v"
+      ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -v {{ target_scope }}"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ lookup('env', 'GITLAB_TOKEN') }}"
