@@ -1,5 +1,5 @@
 ---
-- name: GitLab Configuration as Code - Standardized Fix
+- name: GitLab Configuration as Code - Direct Membership
   hosts: localhost
   connection: local
   gather_facts: false
@@ -18,16 +18,15 @@
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
             api_version: 4
-          
+
           projects_and_groups:
             "{{ target_scope }}":
               members:
                 users:
                   test-user:
-                    access_level: Maintainer
-                    expires_at: "2026-04-18"
+                    access_level: Developer
+                    expires_at: "2026-04-17"
                 enforce: true
-                keep_bots: true
 
     - name: Run GitLabForm
       ansible.builtin.shell: "gitlabform -c /tmp/gitlab_config.yml -v {{ target_scope }}"
