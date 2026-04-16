@@ -23,9 +23,9 @@
             "{{ target_scope }}":
               members:
                 users:
-                  test-user:
-                    access_level: Developer
-                    expires_at: "2026-04-17"
+                  testuser:
+                    access_level: Maintainer
+                    expires_at: "2026-04-19"
                 enforce: true
 
     - name: Run GitLabForm
