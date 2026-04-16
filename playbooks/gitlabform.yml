@@ -5,7 +5,6 @@
   gather_facts: false
 
   vars:
-    # Switched back to HTTP to avoid self-signed certificate issues
     gitlab_url: "http://gitlab.homelab.lan/"
     target_scope: "test-group/test-project"
 
@@ -14,19 +13,19 @@
       ansible.builtin.copy:
         dest: /tmp/gitlab_config.yml
         content: |
-          config_version: 4
-
+          config_version: 3
           gitlab:
             url: "{{ gitlab_url }}"
             token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-
+            api_version: 4
+          
           projects_and_groups:
             "{{ target_scope }}":
               members:
                 users:
                   test-user:
                     access_level: Developer
-                    expires_at: 2026-04-17
+                    expires_at: "2026-04-17"
                 enforce: true
                 keep_bots: true
 
