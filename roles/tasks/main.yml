@@ -1,0 +1,54 @@
+---
+- name: Set SSH Git URL
+  ansible.builtin.set_fact:
+    auth_repo_url: "git@gitlaburl_here:administration/experiments/gitlabform-desired-state.git"
+
+- name: Pull latest changes from Git (SSH)
+  ansible.builtin.git:
+    repo: "{{ auth_repo_url }}"
+    dest: "{{ playbook_dir }}/state_repo"
+    version: main
+    update: true
+    force: true
+    depth: 1
+    key_file: "{{ vault_gitlab_ssh_private_key_path }}"
+    accept_hostkey: true
+  when: git_action == 'pull'
+
+- name: Prepare for Git Push - Check for Changes
+  ansible.builtin.shell: |
+    cd "{{ playbook_dir }}/state_repo"
+    git add desired_state.yml
+    git diff --cached --exit-code
+  register: git_changes_check
+  failed_when: false
+  changed_when: false
+  when: git_action == 'push'
+
+- name: Commit and Push changes to Git (SSH)
+  ansible.builtin.shell: |
+    # Use core.sshCommand to specify the exact key for this push
+    git -c core.sshCommand="ssh -i {{ vault_gitlab_ssh_private_key_path }} -o StrictHostKeyChecking=no" \
+    commit -m "Auto-update: Syncing desired_state.yml [skip ci]" && \
+    git -c core.sshCommand="ssh -i {{ vault_gitlab_ssh_private_key_path }} -o StrictHostKeyChecking=no" \
+    push origin HEAD:main
+  args:
+    chdir: "{{ playbook_dir }}/state_repo"
+  environment:
+    GIT_AUTHOR_NAME: "Ansible Automation"
+    GIT_AUTHOR_EMAIL: "ansible-bot@redhat.com"
+    GIT_COMMITTER_NAME: "Ansible Automation"
+    GIT_COMMITTER_EMAIL: "ansible-bot@redhat.com"
+  when:
+    - git_action == 'push'
+    - git_changes_check.rc != 0
+  no_log: true
+
+- name: Set Result for No Changes
+  ansible.builtin.set_fact:
+    git_push_result:
+      changed: false
+      stdout: "No changes detected, skipping push."
+  when:
+    - git_action == 'push'
+    - git_changes_check.rc == 0

@@ -1,0 +1,70 @@
+---
+- name: GitLab Project GitOps Loop
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - "../credentials.yml"
+
+  vars:
+    gitlab_url: "gitlaburl_here"
+    state_dir: "{{ playbook_dir }}/state_repo"
+    state_file: "{{ state_dir }}/desired_state.yml"
+
+  tasks:
+    - name: 1. Git Pull (Sync the state repo)
+      ansible.builtin.include_role:
+        name: git_sync
+      vars:
+        git_action: pull
+
+    - name: 2. Refresh State from Disk
+      ansible.builtin.include_vars:
+        file: "{{ state_file }}"
+        name: fresh_state
+
+    - name: Process Project Lifecycle
+      block:
+        - name: 3. Update Local State Variable
+          ansible.builtin.set_fact:
+            updated_projects: >-
+              {{ (fresh_state.projects | default({})) | combine({
+                target_scope: {
+                  'members': {
+                    target_user: {
+                      'access_level': target_access_level,
+                      'expires_at': target_expiry | default(omit)
+                    }
+                  }
+                }
+              }, recursive=True) }}
+
+        - name: 4. Save State to File
+          ansible.builtin.copy:
+            # Using the '---' header ensures valid YAML formatting
+            content: "---\nprojects:\n{{ updated_projects | to_nice_yaml(indent=2) }}"
+            dest: "{{ state_file }}"
+            mode: "0644"
+          register: state_updated
+
+        - name: 5. Provision Project
+          ansible.builtin.include_role:
+            name: gitlab_project_provision
+
+        - name: 6. Configure Project
+          ansible.builtin.include_role:
+            name: gitlab_project_config
+
+        - name: 7. Git Commit & Push
+          ansible.builtin.include_role:
+            name: git_sync
+          vars:
+            git_action: push
+          when: state_updated.changed
+
+      always:
+        - name: 8. Cleanup State Directory
+          ansible.builtin.file:
+            path: "{{ state_dir }}"
+            state: absent

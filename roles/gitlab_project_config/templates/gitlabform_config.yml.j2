@@ -1,0 +1,17 @@
+config_version: 4
+
+gitlab:
+  url: "{{ gitlab_url }}"
+  token: "{{ vault_gitlab_token }}"
+  ssl_verify: false
+
+projects_and_groups:
+  "{{ target_scope }}":
+    members:
+      users:
+        "{{ target_user }}":
+          access_level: {{ target_access_level }}
+{% if target_expiry is defined and target_expiry | length > 0 %}
+          expires_at: {{ target_expiry }}
+{% endif %}
+      enforce: true

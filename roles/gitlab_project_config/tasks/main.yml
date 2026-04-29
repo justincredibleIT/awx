@@ -1,0 +1,31 @@
+---
+- name: Apply Membership via GitLabForm
+  block:
+    - name: Generate GitLabForm Config
+      ansible.builtin.template:
+        src: gitlabform_config.yml.j2
+        dest: "/tmp/gitlabform_{{ target_scope | replace('/', '_') }}.yml"
+        mode: '0600'
+
+    - name: 🔍 DEBUG - Cat generated config
+      ansible.builtin.command: "cat /tmp/gitlabform_{{ target_scope | replace('/', '_') }}.yml"
+      register: cat_config
+      changed_when: false
+
+    - name: 📺 DEBUG - Show config content
+      ansible.builtin.debug:
+        var: cat_config.stdout_lines
+
+    - name: Run GitLabForm
+      ansible.builtin.shell: "gitlabform -c /tmp/gitlabform_{{ target_scope | replace('/', '_') }}.yml -v {{ target_scope }}"
+      environment:
+        GITLAB_URL: "{{ gitlab_url }}"
+        GITLAB_TOKEN: "{{ vault_gitlab_token }}"
+        GIT_SSL_NO_VERIFY: "true"
+        PYTHONHTTPSVERIFY: "0"
+      register: gitlabform_run
+      changed_when: "'Applied: True' in gitlabform_run.stdout"
+
+  when: 
+    - target_scope is defined
+    - target_user is defined

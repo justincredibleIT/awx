@@ -1,0 +1,9 @@
+config_version: 4
+
+gitlab:
+  url: "{{ gitlab_url }}"
+  token: "{{ vault_gitlab_token }}"
+  ssl_verify: false
+
+projects_and_groups:
+{{ lookup('file', state_file) | regex_replace('^projects:\n', '') }}

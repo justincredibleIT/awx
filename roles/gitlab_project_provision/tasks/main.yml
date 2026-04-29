@@ -1,0 +1,16 @@
+---
+- name: Ensure GitLab Project Shell Exists
+  community.general.gitlab_project:
+    api_url: "{{ gitlab_url }}"
+    api_token: "{{ vault_gitlab_token }}"
+    validate_certs: false
+    name: "{{ target_scope.split('/')[-1] }}"
+    path: "{{ target_scope.split('/')[-1] }}"
+    group: "{{ target_scope.split('/')[:-1] | join('/') }}"
+    visibility: "{{ project_visibility | default('private') }}"
+    state: present
+  register: project_creation_result
+
+- name: Debug Project Creation
+  ansible.builtin.debug:
+    msg: "Project {{ target_scope }} was {{ 'created/updated' if project_creation_result.changed else 'already present' }}"

@@ -1,0 +1,37 @@
+---
+- name: Determine Project State
+  ansible.builtin.set_fact:
+    # default_config defines the structure we want to ensure exists
+    project_config_template:
+      members:
+        users: {}
+        enforce: true
+      # You can add other feature defaults here (e.g., branches, variables)
+
+- name: Add or Modify Project Configuration
+  ansible.builtin.set_fact:
+    updated_projects: >-
+      {{ (fresh_state.projects | default({})) | combine({
+        target_scope: {
+          'members': {
+            'users': {
+              target_user: {
+                'access_level': target_access_level | int,
+                'expires_at': target_expiry | default(omit)
+              }
+            },
+            'enforce': true
+          }
+        }
+      }, recursive=True) }}
+  when: state_action | default('present') == 'present'
+
+- name: Remove User from Project Configuration
+  ansible.builtin.set_fact:
+    updated_projects: >-
+      {% set projects = fresh_state.projects | default({}) %}
+      {% if target_scope in projects and target_user in projects[target_scope].get('members', {}).get('users', {}) %}
+        {% set _ = projects[target_scope]['members']['users'].pop(target_user) %}
+      {% endif %}
+      {{ projects }}
+  when: state_action | default('present') == 'absent'

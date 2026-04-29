@@ -1,0 +1,144 @@
+---
+- name: GitLab Project GitOps Loop
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - "../credentials.yml"
+
+  vars:
+    gitlab_url: "url_here"
+    state_dir: "{{ playbook_dir }}/state_repo"
+    state_file: "{{ state_dir }}/desired_state.yml"
+    workflow_success: false
+    run_provision: false
+
+  pre_tasks:
+    - name: Validate Required Parameters
+      ansible.builtin.assert:
+        that:
+          - target_scope is defined and target_scope | length > 0
+          - target_user is defined and target_user | length > 0
+          - target_action is defined and target_action in ['add', 'update', 'update-expiry', 'remove']
+          - (target_action in ['add', 'update'] and target_access_level is defined and target_access_level | length > 0) or target_action in ['update-expiry',
+            'remove']
+          - (target_action == 'update-expiry' and target_expiry is defined and target_expiry | length > 0) or target_action != 'update-expiry'
+        fail_msg: "Required parameters: target_scope, target_user, target_action. For add/update: target_access_level required. For update-expiry: target_expiry required."
+      run_once: true
+
+  tasks:
+    - name: Git Pull
+      ansible.builtin.include_role:
+        name: git_sync
+      vars:
+        git_action: pull
+
+    - name: Refresh State from Disk
+      ansible.builtin.include_vars:
+        file: "{{ state_file }}"
+        name: fresh_state
+
+    - name: 3. Update and Apply Configuration
+      block:
+        - name: Load Current State
+          ansible.builtin.set_fact:
+            current_projects: "{{ fresh_state.projects | default({}) }}"
+
+        - name: Build Updated User Config (Add/Update)
+          ansible.builtin.set_fact:
+            user_config: "{{ {'access_level': target_access_level} | combine({'expires_at': target_expiry} if target_expiry is defined and target_expiry | length
+              > 0 else {}) }}"
+          when: target_action in ['add', 'update']
+
+        - name: Build Expiry-Only Config (Update Expiry)
+          ansible.builtin.set_fact:
+            user_config: "{{ current_projects[target_scope]['members']['users'][target_user] | combine({'expires_at': target_expiry}) }}"
+          when: target_action == 'update-expiry'
+
+        - name: Merge User into Target Scope (Add/Update/Update-Expiry)
+          ansible.builtin.set_fact:
+            updated_projects: >-
+              {{ current_projects | combine({
+                target_scope: {
+                  'members': {
+                    'enforce': true,
+                    'users': {
+                      target_user: user_config
+                    }
+                  }
+                }
+              }, recursive=True) }}
+          when: target_action in ['add', 'update', 'update-expiry']
+
+        - name: Set Enforce for User Removal
+          ansible.builtin.set_fact:
+            filtered_users: "{{ (current_projects[target_scope]['members']['users'] | default({})) | dict2items | rejectattr('key', 'equalto', target_user) | list
+              | items2dict }}"
+          when: target_action == 'remove' and target_scope in current_projects
+
+        - name: Remove User from Target Scope (Remove) - Update projects with enforce
+          ansible.builtin.set_fact:
+            updated_projects: >-
+              {{
+                current_projects | combine({
+                  target_scope: current_projects[target_scope] | combine({
+                    'members': current_projects[target_scope]['members'] | combine({'users': filtered_users})
+                  })
+                })
+              }}
+          when: target_action == 'remove' and filtered_users is defined
+
+        - name: 3d. Save Updated State to Disk
+          ansible.builtin.set_fact:
+            yaml_content: "{{ {'projects': updated_projects} | to_nice_yaml(indent=2) }}"
+
+        - name: 3d. Fix Date Format (remove quotes from expires_at)
+          ansible.builtin.set_fact:
+            yaml_content: "{{ yaml_content | regex_replace(\"expires_at: '([^']+)'\", \"expires_at: \\1\") }}"
+
+        - name: 3d. Write Updated State to Disk
+          ansible.builtin.copy:
+            content: "{{ yaml_content }}"
+            dest: "{{ state_file }}"
+          register: state_updated
+
+        - name: 3e. Display State Update Status
+          ansible.builtin.debug:
+            msg: "State file updated: {{ state_updated.changed }}"
+
+        - name: 3f. Provision Project (Optional)
+          ansible.builtin.include_role:
+            name: gitlab_project_provision
+          when: run_provision | bool
+
+        - name: 4. Apply Configuration via GitLabForm
+          ansible.builtin.include_role:
+            name: gitlabform_all_defined
+          vars:
+            fresh_state:
+              projects: "{{ updated_projects }}"
+
+        - name: 5. Git Push (Sync back to remote)
+          ansible.builtin.include_role:
+            name: git_sync
+          vars:
+            git_action: push
+
+        - name: 5a. Mark workflow as successful
+          ansible.builtin.set_fact:
+            workflow_success: true
+
+      rescue:
+        - name: Failure Handler - Display Error
+          ansible.builtin.debug:
+            msg: "An error occurred during the GitOps workflow. Check logs above."
+        - name: Failure Handler - Do NOT cleanup on failure
+          ansible.builtin.fail:
+            msg: "GitOps workflow failed. State directory preserved for debugging."
+
+    - name: 6. Cleanup State Directory (Post-Success)
+      ansible.builtin.file:
+        path: "{{ state_dir }}"
+        state: absent
+      when: workflow_success
