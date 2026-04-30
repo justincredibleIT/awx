@@ -4,25 +4,26 @@
   connection: local
   gather_facts: false
 
-  vars_files:
-    - "../credentials.yml"
-
   vars:
-    gitlab_url: "url_here"
+    gitlab_url: "http://gitlab.homelab.lan/"
     state_dir: "{{ playbook_dir }}/state_repo"
     state_file: "{{ state_dir }}/desired_state.yml"
     workflow_success: false
     run_provision: false
 
   pre_tasks:
+    - name: Load Encrypted Credentials
+      ansible.builtin.include_vars:
+        file: "/home/justin/awx/credentials.yml"
+        name: vault_creds
+
     - name: Validate Required Parameters
       ansible.builtin.assert:
         that:
           - target_scope is defined and target_scope | length > 0
           - target_user is defined and target_user | length > 0
           - target_action is defined and target_action in ['add', 'update', 'update-expiry', 'remove']
-          - (target_action in ['add', 'update'] and target_access_level is defined and target_access_level | length > 0) or target_action in ['update-expiry',
-            'remove']
+          - (target_action in ['add', 'update'] and target_access_level is defined and target_access_level | length > 0) or target_action in ['update-expiry', 'remove']
           - (target_action == 'update-expiry' and target_expiry is defined and target_expiry | length > 0) or target_action != 'update-expiry'
         fail_msg: "Required parameters: target_scope, target_user, target_action. For add/update: target_access_level required. For update-expiry: target_expiry required."
       run_once: true
@@ -47,8 +48,7 @@
 
         - name: Build Updated User Config (Add/Update)
           ansible.builtin.set_fact:
-            user_config: "{{ {'access_level': target_access_level} | combine({'expires_at': target_expiry} if target_expiry is defined and target_expiry | length
-              > 0 else {}) }}"
+            user_config: "{{ {'access_level': target_access_level} | combine({'expires_at': target_expiry} if target_expiry is defined and target_expiry | length > 0 else {}) }}"
           when: target_action in ['add', 'update']
 
         - name: Build Expiry-Only Config (Update Expiry)
@@ -73,8 +73,7 @@
 
         - name: Set Enforce for User Removal
           ansible.builtin.set_fact:
-            filtered_users: "{{ (current_projects[target_scope]['members']['users'] | default({})) | dict2items | rejectattr('key', 'equalto', target_user) | list
-              | items2dict }}"
+            filtered_users: "{{ (current_projects[target_scope]['members']['users'] | default({})) | dict2items | rejectattr('key', 'equalto', target_user) | list | items2dict }}"
           when: target_action == 'remove' and target_scope in current_projects
 
         - name: Remove User from Target Scope (Remove) - Update projects with enforce

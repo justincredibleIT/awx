@@ -1,0 +1,12 @@
+# Sensitive credentials
+credentials.yml
+
+# Vault password file (if you created one)
+.vault_pass
+
+# Ansible state directory
+state_repo/
+
+# Virtual environment (good practice)
+venv/
+.venv/

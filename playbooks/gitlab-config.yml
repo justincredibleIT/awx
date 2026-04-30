@@ -8,7 +8,7 @@
     - "../credentials.yml"
 
   vars:
-    gitlab_url: "gitlaburl_here"
+    gitlab_url: "http://gitlab.homelab.lan/"
     state_dir: "{{ playbook_dir }}/state_repo"
     state_file: "{{ state_dir }}/desired_state.yml"
 

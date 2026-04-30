@@ -1,9 +1,9 @@
 # awx
 
 setup credentials.yml with
-vault_gitlab_token
-vault_gitlab_ssh_private_key_path
-vault_gitlab_ssh_public_key
+vault_gitlab_token:""
+vault_gitlab_ssh_private_key_path:""
+vault_gitlab_ssh_public_key:""
 
 # Add a User (with access level name and optional expiry)
 
