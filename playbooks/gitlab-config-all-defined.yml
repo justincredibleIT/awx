@@ -12,10 +12,6 @@
     run_provision: false
 
   pre_tasks:
-    - name: Load Encrypted Credentials
-      ansible.builtin.include_vars:
-        file: "/home/justin/awx/credentials.yml"
-        name: vault_creds
 
     - name: Validate Required Parameters
       ansible.builtin.assert:

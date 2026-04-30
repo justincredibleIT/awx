@@ -1,7 +1,7 @@
 ---
 - name: Set SSH Git URL
   ansible.builtin.set_fact:
-    auth_repo_url: "git@gitlaburl_here:administration/experiments/gitlabform-desired-state.git"
+    auth_repo_url: "git@gitlab.homelab.lan:test-group/gitlabform-desired-state.git"
 
 - name: Pull latest changes from Git (SSH)
   ansible.builtin.git:
