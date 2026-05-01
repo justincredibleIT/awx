@@ -1,23 +1,22 @@
 ---
-- name: Apply All Managed Projects via GitLabForm
+- name: Apply Hierarchical GitLabForm Config
   block:
-    - name: Generate Global GitLabForm Config
+    - name: Generate Temporary GitLabForm Config
       ansible.builtin.template:
         src: gitlabform_global.yml.j2
         dest: "/tmp/gitlabform_full_sync.yml"
         mode: "0600"
 
-    - name: Run GitLabForm (ALL_DEFINED)
-      ansible.builtin.command: "gitlabform -c /tmp/gitlabform_full_sync.yml --verbose ALL_DEFINED"
+    - name: Run GitLabForm (Targeted Run)
+      ansible.builtin.command: "gitlabform -c /tmp/gitlabform_full_sync.yml --verbose {{ target_scope }}"
       environment:
         GITLAB_URL: "{{ gitlab_url }}"
         GITLAB_TOKEN: "{{ vault_gitlab_token }}"
         GIT_SSL_NO_VERIFY: "true"
-        PYTHONHTTPSVERIFY: "0"
       register: gitlabform_run
       changed_when: "'Applied: True' in gitlabform_run.stdout"
 
   rescue:
     - name: Failed to sync state
       ansible.builtin.fail:
-        msg: "GitLabForm failed to apply the desired state. Check logs."
+        msg: "GitLabForm failed to apply the desired state for {{ target_scope }}."

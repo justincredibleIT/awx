@@ -18,7 +18,7 @@
 - name: Prepare for Git Push - Check for Changes
   ansible.builtin.shell: |
     cd "{{ playbook_dir }}/state_repo"
-    git add desired_state.yml
+    git add .
     git diff --cached --exit-code
   register: git_changes_check
   failed_when: false
@@ -29,7 +29,7 @@
   ansible.builtin.shell: |
     # Use core.sshCommand to specify the exact key for this push
     git -c core.sshCommand="ssh -i {{ vault_gitlab_ssh_private_key_path }} -o StrictHostKeyChecking=no" \
-    commit -m "Auto-update: Syncing desired_state.yml [skip ci]" && \
+    commit -m "Auto-update: Syncing hierarchical state [skip ci]" && \
     git -c core.sshCommand="ssh -i {{ vault_gitlab_ssh_private_key_path }} -o StrictHostKeyChecking=no" \
     push origin HEAD:main
   args:

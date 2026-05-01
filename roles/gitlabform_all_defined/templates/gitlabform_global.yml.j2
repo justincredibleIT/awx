@@ -6,4 +6,11 @@ gitlab:
   ssl_verify: false
 
 projects_and_groups:
-{{ lookup('file', state_file) | regex_replace('^projects:\n', '') }}
+  "{{ target_scope }}":
+    {{ (lookup('file', state_dir ~ '/global/defaults.yml') | from_yaml | combine(
+        lookup('file', state_dir ~ '/groups/' + target_scope.split('/')[0] + '/settings.yml', errors='ignore') | default('{}', true) | from_yaml,
+        recursive=True
+       ) | combine(
+        final_yaml_structure[target_scope],
+        recursive=True
+       )) | to_nice_yaml(indent=2) | indent(4) }}

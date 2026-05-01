@@ -7,6 +7,7 @@
   vars:
     gitlab_url: "http://gitlab.homelab.lan/"
     state_dir: "{{ playbook_dir }}/state_repo"
+    # Maps scope "group/sub/proj" to "state_repo/projects/group/sub/proj.yml"
     target_project_file: "{{ state_dir }}/projects/{{ target_scope }}.yml"
     workflow_success: false
     run_provision: false
@@ -34,12 +35,13 @@
             path: "{{ target_project_file }}"
           register: project_file_stat
 
-        - name: Load Project Data
+        - name: Load Project Data from YAML
+          # We use from_yaml here because keys with '/' can be tricky for include_vars
           ansible.builtin.set_fact:
             existing_project_state: "{{ lookup('file', target_project_file) | from_yaml }}"
           when: project_file_stat.stat.exists
 
-        - name: Initialize Empty State
+        - name: Initialize Empty State if New Project
           ansible.builtin.set_fact:
             existing_project_state: {}
           when: not project_file_stat.stat.exists
@@ -48,25 +50,36 @@
       block:
         - name: Load Current Project Facts
           ansible.builtin.set_fact:
+            # Look for the specific project key in the file
             current_project_data: "{{ existing_project_state[target_scope] | default({'members': {'enforce': true, 'users': {}}}) }}"
 
-        - name: Build User Config
+        - name: Build User Config (Add/Update)
           ansible.builtin.set_fact:
             user_config: "{{ {'access_level': target_access_level} | combine({'expires_at': target_expiry} if target_expiry is defined and target_expiry | length > 0 else {}) }}"
           when: target_action in ['add', 'update']
 
-        - name: Build Expiry-Only Config
+        - name: Build Expiry-Only Config (Update Expiry)
           ansible.builtin.set_fact:
             user_config: "{{ current_project_data.members.users[target_user] | combine({'expires_at': target_expiry}) }}"
           when: target_action == 'update-expiry'
 
         - name: Process Membership Logic
           ansible.builtin.set_fact:
-            updated_users: "{{ (current_project_data.members.users | combine({target_user: user_config})) if target_action != 'remove' else (current_project_data.members.users | dict2items | rejectattr('key', 'equalto', target_user) | list | items2dict) }}"
+            updated_users: >-
+              {% if target_action == 'remove' %}
+                {{ current_project_data.members.users | dict2items | rejectattr('key', 'equalto', target_user) | list | items2dict }}
+              {% else %}
+                {{ current_project_data.members.users | combine({target_user: user_config}) }}
+              {% endif %}
 
-        - name: Construct Final Project Object
+        - name: Construct Final Project Object (No 'projects' key)
           ansible.builtin.set_fact:
-            final_yaml_structure: "{{ { target_scope: { 'members': { 'enforce': true, 'users': updated_users } } } }}"
+            # File starts directly with the scope key for GitLabForm wildcard compatibility
+            final_yaml_structure:
+              "{{ target_scope }}":
+                members:
+                  enforce: true
+                  users: "{{ updated_users }}"
 
         - name: 3d. Format YAML and Fix Dates
           ansible.builtin.set_fact:
@@ -82,10 +95,9 @@
           ansible.builtin.copy:
             content: "{{ yaml_content }}"
             dest: "{{ target_project_file }}"
-            mode: '0644'
           register: state_updated
 
-        - name: 3g. Provision Project
+        - name: 3g. Provision Project (Optional)
           ansible.builtin.include_role:
             name: gitlab_project_provision
           when: run_provision | bool
@@ -93,8 +105,11 @@
         - name: 4. Apply via GitLabForm
           ansible.builtin.include_role:
             name: gitlabform_all_defined
+          vars:
+            # Role uses target_scope to target the specific run
+            fresh_state: "{{ final_yaml_structure }}"
 
-        - name: 5. Git Push
+        - name: 5. Git Push (Sync back to remote)
           ansible.builtin.include_role:
             name: git_sync
           vars:
@@ -107,9 +122,9 @@
       rescue:
         - name: Failure Handler
           ansible.builtin.fail:
-            msg: "GitOps workflow failed. State preserved at {{ state_dir }}"
+            msg: "GitOps workflow failed. Check logs above. State preserved at {{ state_dir }}"
 
-    - name: 6. Cleanup
+    - name: 6. Cleanup (Post-Success)
       ansible.builtin.file:
         path: "{{ state_dir }}"
         state: absent
