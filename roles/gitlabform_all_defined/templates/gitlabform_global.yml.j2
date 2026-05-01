@@ -13,4 +13,4 @@ projects_and_groups:
        ) | combine(
         final_yaml_structure[target_scope],
         recursive=True
-       )) | to_nice_yaml(indent=2) | indent(4) }}
+       )) | to_nice_yaml(indent=2) | regex_replace("expires_at: '([^']+)'", "expires_at: \\1") | indent(4) }}
